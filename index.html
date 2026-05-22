@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ScientistOne: Towards Human-Level Autonomous Research via Chain-of-Evidence">
+    <meta name="keywords" content="Autonomous Research, Chain of Evidence, Verifiability, LLM Agents, Scientific Integrity">
+    <title>ScientistOne: Towards Human-Level Autonomous Research via Chain-of-Evidence</title>
+
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+
+    <link rel="stylesheet" href="./static/css/bulma.min.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+
+    <link rel="stylesheet" href="./static/css/index.css">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="./static/js/index.js"></script>
+
+    <style>
+        .results-table {
+            margin: 0 auto;
+            border-collapse: collapse;
+        }
+        .results-table th, .results-table td {
+            padding: 8px 14px;
+            text-align: center;
+            border-bottom: 1px solid #dbdbdb;
+        }
+        .results-table thead th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+        }
+        .results-table .best {
+            font-weight: 700;
+            color: #363636;
+        }
+        .results-table .system-ours {
+            background-color: #f0faf0;
+        }
+        .highlight-box {
+            background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            margin: 1.5rem 0;
+            border-left: 4px solid #3273dc;
+        }
+        .highlight-box .stat {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #3273dc;
+        }
+        .highlight-box .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .section-divider {
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 2rem 0;
+        }
+
+        /* Paper gallery */
+        .gallery-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .gallery-tab {
+            padding: 0.5rem 1.5rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .gallery-tab.active {
+            background-color: #3273dc;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(50, 115, 220, 0.3);
+        }
+        .gallery-tab:not(.active) {
+            background-color: #f5f5f5;
+            color: #888;
+        }
+        .gallery-tab:not(.active):hover {
+            background-color: #e8e8e8;
+        }
+        .paper-selector {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .paper-selector button {
+            padding: 0.35rem 1rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: #fff;
+            color: #555;
+            transition: all 0.15s;
+        }
+        .paper-selector button.active {
+            background: #363636;
+            color: #fff;
+            border-color: #363636;
+        }
+        .paper-selector button:not(.active):hover {
+            background: #f0f0f0;
+        }
+        .pdf-viewer-container {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            overflow-y: auto;
+            max-height: 750px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            background: #525659;
+            padding: 0.5rem 0;
+        }
+        .pdf-viewer-container canvas {
+            display: block;
+            margin: 0.5rem auto;
+            max-width: 100%;
+        }
+
+        .link-coming-soon {
+            opacity: 0.5;
+            pointer-events: none;
+            position: relative;
+        }
+        .coming-soon-badge {
+            font-size: 0.65rem;
+            background: #ffdd57;
+            color: #333;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+            font-weight: 600;
+        }
+
+        /* Author list */
+        .author-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.25rem 1rem;
+            margin-top: 0.5rem;
+        }
+        .author-list .author-block {
+            font-size: 1rem;
+        }
+        .author-equal {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ==================== HERO ==================== -->
+    <section class="hero">
+        <div class="hero-body" style="padding-bottom: 1rem;">
+            <div class="container is-max-desktop">
+                <div class="columns is-centered">
+                    <div class="column has-text-centered">
+                        <h1 class="title is-1 publication-title">
+                            <span style="font-size: xx-large;">
+                                ScientistOne: Towards Human-Level Autonomous Research via Chain-of-Evidence
+                            </span>
+                        </h1>
+
+                        <div class="is-size-5 publication-authors author-list">
+                            <span class="author-block">Rui Meng,</span>
+                            <span class="author-block">Bhavana Dalvi Mishra<sup>*</sup>,</span>
+                            <span class="author-block">Jiefeng Chen<sup>*</sup>,</span>
+                            <span class="author-block">Chun-Liang Li,</span>
+                            <span class="author-block">Palash Goyal,</span>
+                            <span class="author-block">Mihir Parmar,</span>
+                            <span class="author-block">Yiwen Song,</span>
+                            <span class="author-block">Yale Song,</span>
+                            <span class="author-block">Rajarishi Sinha,</span>
+                            <span class="author-block">Parthasarathy Ranganathan,</span>
+                            <span class="author-block">Burak Gokturk,</span>
+                            <span class="author-block">Jinsung Yoon,</span>
+                            <span class="author-block">Tomas Pfister</span>
+                        </div>
+                        <div class="has-text-centered author-equal">
+                            <sup>*</sup> Equal contribution
+                        </div>
+
+                        <div class="is-size-5 publication-authors" style="margin-top: 0.25rem;">
+                            <span class="author-block">Google Cloud AI Research</span>
+                        </div>
+
+                        <div class="has-text-centered" style="margin-top: 0.75rem;">
+                            <div class="publication-links">
+                                <span class="link-block">
+                                    <a href="#" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon"><i class="ai ai-arxiv"></i></span>
+                                        <span>arXiv</span>
+                                    </a>
+                                </span>
+
+                                <span class="link-block">
+                                    <a href="https://github.com/scientist-one/generated-artifacts" target="_blank" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon"><i class="fab fa-github"></i></span>
+                                        <span>Generated Papers &amp; Code</span>
+                                    </a>
+                                </span>
+
+                                <span class="link-block link-coming-soon">
+                                    <a href="#" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon"><i class="fab fa-github"></i></span>
+                                        <span>Evaluation Code</span>
+                                        <span class="coming-soon-badge">Coming Soon</span>
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== ONE-LINER + PAPER GALLERY ==================== -->
+    <section class="section" style="padding-top: 0.5rem;">
+        <div class="container is-max-desktop">
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-four-fifths">
+                    <blockquote style="border-left: 4px solid #3273dc; padding: 0.75rem 1.5rem; margin: 0 auto 1rem; background: #f8fafd; border-radius: 0 6px 6px 0;">
+                        <p class="is-size-5" style="margin: 0; color: #363636; line-height: 1.6; font-style: italic;">
+                            ScientistOne autonomously generates research papers with verifiable evidence chains&mdash;every claim traces to code, data, or literature&mdash;while matching or exceeding human expert performance on frontier algorithm discovery tasks.
+                        </p>
+                    </blockquote>
+                </div>
+            </div>
+
+            <h2 class="title is-4 has-text-centered">Generated Papers</h2>
+            <p class="has-text-centered" style="margin-bottom: 1rem; color: #888; font-size: 0.85rem;">
+                21 papers autonomously generated by ScientistOne across three benchmarks.
+            </p>
+
+            <!-- Category toggle buttons -->
+            <div class="gallery-tabs" id="category-tabs">
+                <button class="gallery-tab active" onclick="switchCategory('adrs')">ADRS (15)</button>
+                <button class="gallery-tab" onclick="switchCategory('mle')">MLE-Bench (5)</button>
+                <button class="gallery-tab" onclick="switchCategory('pg')">Parameter Golf (1)</button>
+            </div>
+
+            <!-- Paper selector (per category) -->
+            <div class="paper-selector" id="paper-selector"></div>
+
+            <!-- PDF viewer (rendered via PDF.js) -->
+            <div class="has-text-centered" style="margin-bottom: 0.5rem;">
+                <button id="toggle-pdf" onclick="togglePdfViewer()" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#888;">
+                    <i class="fas fa-chevron-up"></i> Hide preview
+                </button>
+            </div>
+            <div class="pdf-viewer-container" id="pdf-viewer-container">
+                <p style="text-align:center; color:#aaa; padding:2rem;">Loading PDF...</p>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ==================== KEY RESULTS ==================== -->
+    <section class="section" style="background-color: #fafafa;">
+        <div class="container is-max-desktop">
+            <h2 class="title is-3 has-text-centered">Key Results</h2>
+            <div class="columns is-centered" style="margin-top: 1.5rem;">
+                <div class="column is-3 has-text-centered">
+                    <div class="highlight-box">
+                        <div class="stat">0 / 337</div>
+                        <div class="stat-label">Hallucinated References</div>
+                    </div>
+                </div>
+                <div class="column is-3 has-text-centered">
+                    <div class="highlight-box">
+                        <div class="stat">12 / 12</div>
+                        <div class="stat-label">Score Verification</div>
+                    </div>
+                </div>
+                <div class="column is-3 has-text-centered">
+                    <div class="highlight-box">
+                        <div class="stat">14 / 15</div>
+                        <div class="stat-label">Method-Code Alignment</div>
+                    </div>
+                </div>
+                <div class="column is-3 has-text-centered">
+                    <div class="highlight-box">
+                        <div class="stat">98%</div>
+                        <div class="stat-label">Numerical CPR</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SYSTEM OVERVIEW ==================== -->
+    <section class="section">
+        <div class="container is-max-desktop">
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-four-fifths">
+                    <h2 class="title is-3">System Overview</h2>
+                    <div class="content has-text-justified">
+                        <p>
+                            ScientistOne is an end-to-end autonomous research system whose pipeline&mdash;Problem Investigator, Discovery Engine, and Paper Writer with Claim Verifier&mdash;is designed to satisfy Chain-of-Evidence natively.
+                            The Problem Investigator reads up to 100 full-text PDFs per topic, producing grounded experiment briefs.
+                            The Discovery Engine uses a parallel explore-exploit search tree to discover high-performing algorithms.
+                            The Claim Verifier checks every claim in the draft against its declared evidence source before the final paper is produced.
+                        </p>
+                    </div>
+                    <figure class="image">
+                        <img src="./static/images/00-overall-system.jpg" alt="ScientistOne system overview">
+                    </figure>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== COE AUDIT ==================== -->
+    <section class="section" style="background-color: #fafafa;">
+        <div class="container is-max-desktop">
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-four-fifths">
+                    <h2 class="title is-3">CoE Audit</h2>
+                    <div class="content has-text-justified">
+                        <p>
+                            CoE Audit is a post-hoc evaluation protocol for auditing AI-generated research papers through four integrity checks&mdash;Score Verification, Specification Violation, Reference Verification, and Method-Code Alignment&mdash;targeting the most damaging evidence chain failures.
+                            Unlike automated review scores that reward fluency, CoE Audit checks whether individual claims trace to supporting evidence.
+                        </p>
+                    </div>
+                    <figure class="image">
+                        <img src="./static/images/06-forensic-audit-overview_v0.2.jpg" alt="CoE Audit overview">
+                    </figure>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== INTEGRITY RESULTS ==================== -->
+    <section class="section" id="results">
+        <div class="container is-max-desktop">
+            <h2 class="title is-3 has-text-centered">Integrity Audit Results</h2>
+            <div class="columns is-centered" style="margin-bottom: 1.5rem;">
+                <div class="column is-four-fifths">
+                    <div class="content has-text-justified">
+                        <p>
+                            We apply CoE Audit to 75 papers from five autonomous research systems across five frontier systems-research tasks.
+                            Every baseline exhibits at least one systematic integrity failure: hallucinated reference rates reach 21%, score verification passes in as few as 42% of papers, and method&ndash;code alignment ranges from 20% to 80%.
+                            ScientistOne is the only system to achieve perfect or near-perfect scores on all four checks&mdash;a direct consequence of maintaining evidence chains throughout the pipeline rather than retrofitting them at paper-writing time.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container" style="display: flex; justify-content: center;">
+                <table class="results-table" style="box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">System</th>
+                            <th>Score Verif. &uarr;</th>
+                            <th>Spec. Violation &darr;</th>
+                            <th>Ref. Verif. &darr;</th>
+                            <th>Method-Code Align. &uarr;</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="text-align: left;">Sakana ASv2</td>
+                            <td>5/12 (42%)</td>
+                            <td>10/15&dagger;</td>
+                            <td>0/159 (0%)</td>
+                            <td>5/15 (33%)&dagger;</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">AutoResearchClaw</td>
+                            <td>5/12 (42%)</td>
+                            <td>0/15</td>
+                            <td>3/196 (1.5%)</td>
+                            <td>3/15 (20%)</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">DeepScientist</td>
+                            <td>11/12 (92%)</td>
+                            <td>0/15</td>
+                            <td>42/201 (20.9%)</td>
+                            <td>5/15 (33%)</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">AI-Researcher</td>
+                            <td>9/12 (75%)</td>
+                            <td>1/15</td>
+                            <td>21/222 (9.5%)</td>
+                            <td>12/15 (80%)</td>
+                        </tr>
+                        <tr class="system-ours" style="border-top: 2px solid #333;">
+                            <td style="text-align: left;"><strong>ScientistOne</strong></td>
+                            <td class="best">12/12 (100%)</td>
+                            <td class="best">0/15</td>
+                            <td class="best">0/337 (0%)</td>
+                            <td class="best">14/15 (93%)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="has-text-centered" style="margin-top: 1rem; font-size: 0.85rem; color: #888;">
+                &dagger; Sakana's solution code for audit contains non-solver scaffolding by system design rather than a standalone solver, inflating I2/I4 counts. Cross-system comparison on these two checks should exclude Sakana. See paper for details.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==================== SOLVER PERFORMANCE ==================== -->
+    <section class="section" style="background-color: #fafafa;">
+        <div class="container is-max-desktop">
+            <h2 class="title is-3 has-text-centered">Solution Discovery Performance</h2>
+            <div class="columns is-centered" style="margin-bottom: 1.5rem;">
+                <div class="column is-four-fifths">
+                    <div class="content has-text-justified">
+                        <p>
+                            On the ADRS benchmark's five frontier systems-research tasks, all systems match or exceed human expert baselines, consistent with prior observations that LLM-based agents rapidly converge to similar solution quality.
+                            ScientistOne achieves the best overall scores on Cloudcast and EPLB, and is on par with specialized algorithm-discovery systems (AdaEvolve, EvoX) that do not produce research papers.
+                            Critically, this performance comes with no integrity tradeoff&mdash;ScientistOne is the only system that pairs competitive solver scores with full evidence-chain verifiability.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container" style="display: flex; justify-content: center;">
+                <table class="results-table" style="box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Task</th>
+                            <th>Dir.</th>
+                            <th>Human</th>
+                            <th>AdaEvo*</th>
+                            <th>EvoX*</th>
+                            <th>Sakana</th>
+                            <th>ARC</th>
+                            <th>AIR</th>
+                            <th>DS</th>
+                            <th><strong>ScientistOne</strong></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="text-align: left;">Prism</td>
+                            <td>&uarr;</td>
+                            <td>21.89</td>
+                            <td class="best">26.26</td>
+                            <td class="best">26.26</td>
+                            <td class="best">26.26</td>
+                            <td>26.25</td>
+                            <td class="best">26.26</td>
+                            <td class="best">26.26</td>
+                            <td class="best">26.26</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">Cloudcast</td>
+                            <td>&darr;</td>
+                            <td>626.24</td>
+                            <td>637.10</td>
+                            <td>623.69</td>
+                            <td>627.11</td>
+                            <td>690.37</td>
+                            <td>734.28</td>
+                            <td>620.09</td>
+                            <td class="best">618.08</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">EPLB</td>
+                            <td>&uarr;</td>
+                            <td>0.1265</td>
+                            <td>0.1450</td>
+                            <td>0.1453</td>
+                            <td>0.1270</td>
+                            <td>0.1266</td>
+                            <td>0.1449</td>
+                            <td>0.1284</td>
+                            <td class="best">0.1459</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">LLM-SQL</td>
+                            <td>&uarr;</td>
+                            <td>0.6920</td>
+                            <td class="best">0.7520</td>
+                            <td>0.7300</td>
+                            <td>0.7320</td>
+                            <td>0.6757</td>
+                            <td>0.7148</td>
+                            <td>0.7307</td>
+                            <td>0.7222</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">TXN</td>
+                            <td>&uarr;</td>
+                            <td>2724.8</td>
+                            <td>4310</td>
+                            <td>4310</td>
+                            <td>4184</td>
+                            <td>3247</td>
+                            <td class="best">4311</td>
+                            <td>4286</td>
+                            <td>3906</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="has-text-centered" style="margin-top: 1rem; font-size: 0.85rem; color: #888;">
+                * Gemini-3.0-Pro; all other systems use Gemini-3.1-Pro.
+                Sakana/ARC/AIR/DS/ScientistOne scores are from independent gold evaluator re-runs;
+                Human, AdaEvolve, and EvoX scores are from original publications.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==================== GENERALIZABILITY ==================== -->
+    <section class="section">
+        <div class="container is-max-desktop">
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-full">
+                    <h2 class="title is-3">Generalizability: MLE-Bench &amp; Parameter Golf</h2>
+                    <div class="content has-text-justified" style="max-width: 800px; margin: 0 auto;">
+                        <p>
+                            To test whether the discovery loop transfers beyond ADRS, we evaluate ScientistOne <em>unmodified</em> on six tasks spanning medical imaging, fine-grained recognition, 3D perception, and parameter-constrained language modeling.
+                            Five tasks come from MLE-Bench (Kaggle competitions in Medium and High difficulty tiers); the sixth is Parameter Golf, a live competition requiring participants to train the highest-performing language model under strict constraints.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container" style="display: flex; justify-content: center; margin-top: 1.5rem;">
+                <table class="results-table" style="box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Task</th>
+                            <th>Dir.</th>
+                            <th colspan="2">DeepScientist</th>
+                            <th colspan="2"><strong>ScientistOne</strong></th>
+                        </tr>
+                        <tr style="background-color: #fafafa;">
+                            <th></th>
+                            <th></th>
+                            <th>Score</th>
+                            <th>Standing</th>
+                            <th>Score</th>
+                            <th>Standing</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="text-align: left;">3D Object Detection</td>
+                            <td>&uarr;</td>
+                            <td>0.0000</td>
+                            <td>Below Median</td>
+                            <td class="best">0.1763</td>
+                            <td class="best" style="color: #b8860b;">Gold Medal</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">AI4Code</td>
+                            <td>&uarr;</td>
+                            <td>0.6964</td>
+                            <td>Below Median</td>
+                            <td class="best">0.8356</td>
+                            <td class="best">Above Median</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">iMet 2020 FGVC7</td>
+                            <td>&uarr;</td>
+                            <td>0.6804</td>
+                            <td style="color: #aaa;">Silver Medal</td>
+                            <td>0.6791</td>
+                            <td style="color: #aaa;">Silver Medal</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">RSNA Brain Tumor</td>
+                            <td>&uarr;</td>
+                            <td>0.6377</td>
+                            <td style="color: #b8860b;">Gold Medal</td>
+                            <td class="best">0.6518</td>
+                            <td class="best" style="color: #b8860b;">Gold Medal</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: left;">iNaturalist 2019 FGVC6</td>
+                            <td>&darr;</td>
+                            <td class="best">0.2158</td>
+                            <td style="color: #aaa;">Silver Medal</td>
+                            <td>0.2445</td>
+                            <td style="color: #aaa;">Silver Medal</td>
+                        </tr>
+                        <tr style="border-top: 2px solid #333;">
+                            <td style="text-align: left;">Parameter Golf</td>
+                            <td>&darr;</td>
+                            <td style="color: #cc0000;">Invalid</td>
+                            <td style="color: #cc0000;">Size limit exceeded</td>
+                            <td class="best">1.0600</td>
+                            <td class="best" style="color: #b8860b;">SOTA</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="columns is-centered" style="margin-top: 2rem;">
+                <div class="column is-four-fifths">
+                    <div class="content has-text-justified">
+                        <h4 class="title is-5">Highlights</h4>
+                        <ul>
+                            <li><strong>Gold on 3D Object Detection</strong> &mdash; ScientistOne earns a Gold Medal (0.1763) on this High-difficulty task where DeepScientist scores 0.0000, failing entirely.</li>
+                            <li><strong>SOTA on Parameter Golf</strong> &mdash; On this live LLM training competition, ScientistOne meets all constraints and achieves top-1 leaderboard performance (1.0600). DeepScientist exceeds the 16MB artifact size limit and produces an invalid submission.</li>
+                            <li><strong>Genuine algorithmic novelty</strong> &mdash; On Parameter Golf, ScientistOne introduces Hessian-diagonal-weighted SVD initialization and an alternating-least-squares refinement loop with GPTQ&mdash;techniques novel to the leaderboard. Internal ablations isolate the ALS loop as the primary driver. DeepScientist contributes zero algorithmic novelty, limited to superficial environment adjustments.</li>
+                            <li><strong>Consistent across domains</strong> &mdash; Two Gold Medals, two Silver Medals, and one Above Median on MLE-Bench; SOTA on Parameter Golf. The same pipeline generalizes from systems optimization to medical imaging, fine-grained recognition, 3D perception, and LLM training without modification.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== BIBTEX ==================== -->
+    <section class="section" id="BibTeX">
+        <div class="container is-max-desktop content">
+            <h2 class="title">BibTeX</h2>
+            <pre><code>@article{meng2026scientistone,
+  title     = {ScientistOne: Towards Human-Level Autonomous Research via Chain-of-Evidence},
+  author    = {Meng, Rui and Dalvi Mishra, Bhavana and Chen, Jiefeng and Li, Chun-Liang and Goyal, Palash and Parmar, Mihir and Song, Yiwen and Song, Yale and Sinha, Rajarishi and Ranganathan, Parthasarathy and Gokturk, Burak and Yoon, Jinsung and Pfister, Tomas},
+  journal   = {arXiv preprint},
+  year      = {2026}
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer class="footer">
+        <div class="container">
+            <div class="content has-text-centered">
+                <p>
+                    Website template adapted from <a href="https://nerfies.github.io/" target="_blank">Nerfies</a>.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+
+    const paperData = {
+        adrs: [
+            { label: 'Prism (s1)',  file: 'adrs/prism-seed1.pdf' },
+            { label: 'Prism (s2)',  file: 'adrs/prism-seed2.pdf' },
+            { label: 'Prism (s3)',  file: 'adrs/prism-seed3.pdf' },
+            { label: 'Cloudcast (s1)', file: 'adrs/cloudcast-seed1.pdf' },
+            { label: 'Cloudcast (s2)', file: 'adrs/cloudcast-seed2.pdf' },
+            { label: 'Cloudcast (s3)', file: 'adrs/cloudcast-seed3.pdf' },
+            { label: 'EPLB (s1)',  file: 'adrs/eplb-seed1.pdf' },
+            { label: 'EPLB (s2)',  file: 'adrs/eplb-seed2.pdf' },
+            { label: 'EPLB (s3)',  file: 'adrs/eplb-seed3.pdf' },
+            { label: 'LLM-SQL (s1)', file: 'adrs/llm_sql-seed1.pdf' },
+            { label: 'LLM-SQL (s2)', file: 'adrs/llm_sql-seed2.pdf' },
+            { label: 'LLM-SQL (s3)', file: 'adrs/llm_sql-seed3.pdf' },
+            { label: 'TXN (s1)',   file: 'adrs/txn_scheduling-seed1.pdf' },
+            { label: 'TXN (s2)',   file: 'adrs/txn_scheduling-seed2.pdf' },
+            { label: 'TXN (s3)',   file: 'adrs/txn_scheduling-seed3.pdf' },
+        ],
+        mle: [
+            { label: '3D Object Detection', file: 'mle/3d-object-detection-for-autonomous-vehicles.pdf' },
+            { label: 'AI4Code',              file: 'mle/ai4code.pdf' },
+            { label: 'iMet 2020',            file: 'mle/imet-2020-fgvc7.pdf' },
+            { label: 'iNaturalist 2019',     file: 'mle/inaturalist-2019-fgvc6.pdf' },
+            { label: 'RSNA Brain Tumor',     file: 'mle/rsna-miccai-brain-tumor-radiogenomic-classification.pdf' },
+        ],
+        pg: [
+            { label: 'Parameter Golf', file: 'pg/parameter_golf.pdf' },
+        ]
+    };
+
+    let currentCategory = 'adrs';
+    let renderTask = 0;
+
+    async function loadPaper(file) {
+        const taskId = ++renderTask;
+        const container = document.getElementById('pdf-viewer-container');
+        container.innerHTML = '<p style="text-align:center;color:#aaa;padding:2rem;">Loading PDF...</p>';
+
+        const pdf = await pdfjsLib.getDocument('./artifacts/' + file).promise;
+        if (taskId !== renderTask) return;
+
+        container.innerHTML = '';
+        const scale = 1.5;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            if (taskId !== renderTask) return;
+
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            container.appendChild(canvas);
+
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+    }
+
+    function switchCategory(cat) {
+        currentCategory = cat;
+        document.querySelectorAll('#category-tabs .gallery-tab').forEach(t => t.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        renderPaperSelector(cat);
+        loadPaper(paperData[cat][0].file);
+    }
+
+    function renderPaperSelector(cat) {
+        const container = document.getElementById('paper-selector');
+        container.innerHTML = '';
+        paperData[cat].forEach((p, i) => {
+            const btn = document.createElement('button');
+            btn.textContent = p.label;
+            if (i === 0) btn.classList.add('active');
+            btn.onclick = function() {
+                container.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                loadPaper(p.file);
+            };
+            container.appendChild(btn);
+        });
+    }
+
+    window.switchCategory = switchCategory;
+
+    window.togglePdfViewer = function() {
+        const container = document.getElementById('pdf-viewer-container');
+        const btn = document.getElementById('toggle-pdf');
+        if (container.style.display === 'none') {
+            container.style.display = '';
+            btn.innerHTML = '<i class="fas fa-chevron-up"></i> Hide preview';
+        } else {
+            container.style.display = 'none';
+            btn.innerHTML = '<i class="fas fa-chevron-down"></i> Show preview';
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        renderPaperSelector('adrs');
+        loadPaper(paperData.adrs[0].file);
+    });
+    </script>
+
+</body>
+</html>
