@@ -465,7 +465,7 @@
                             <th>ARC</th>
                             <th>AIR</th>
                             <th>DS</th>
-                            <th  class="system-ours"> <strong>ScientistOne</strong></th>
+                            <th><strong>ScientistOne</strong></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -562,15 +562,15 @@
                             <th style="text-align: left;">Task</th>
                             <th>Dir.</th>
                             <th colspan="2">DeepScientist</th>
-                            <th colspan="2" class="system-ours"><strong>ScientistOne</strong></th>
+                            <th colspan="2"><strong>ScientistOne</strong></th>
                         </tr>
                         <tr style="background-color: #fafafa;">
                             <th></th>
                             <th></th>
                             <th>Score</th>
                             <th>Standing</th>
-                            <th class="system-ours">Score</th>
-                            <th class="system-ours">Standing</th>
+                            <th>Score</th>
+                            <th>Standing</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -620,11 +620,14 @@
                             <td style="color: #cc0000;">Invalid</td>
                             <td style="color: #cc0000;">Size limit exceeded</td>
                             <td class="best">1.0600</td>
-                            <td class="best" style="color: #b8860b;">SOTA</td>
+                            <td class="best" style="color: #b8860b;">SOTA&sup1;</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            <p class="has-text-centered" style="margin-top: 1rem; font-size: 0.85rem; color: #888;">
+                &sup1; As of leaderboard cutoff date April 27, 2026. The leaderboard has since been updated with newer results.
+            </p>
 
             <div class="columns is-centered" style="margin-top: 2rem;">
                 <div class="column is-four-fifths">
@@ -632,7 +635,7 @@
                         <h4 class="title is-5">Highlights</h4>
                         <ul>
                             <li><strong>Gold on 3D Object Detection</strong> &mdash; ScientistOne earns a Gold Medal (0.1763) on this High-difficulty task where DeepScientist scores 0.0000, failing entirely.</li>
-                            <li><strong>SOTA on Parameter Golf</strong> &mdash; On this live LLM training competition, ScientistOne meets all constraints and achieves top-1 leaderboard performance (1.0600). DeepScientist exceeds the 16MB artifact size limit and produces an invalid submission.</li>
+                            <li><strong>SOTA on Parameter Golf</strong> &mdash; On this live LLM training competition, ScientistOne meets all constraints and achieves top-1 leaderboard performance (1.0600) as of the knowledge cutoff (April 27, 2026). DeepScientist exceeds the 16MB artifact size limit and produces an invalid submission.</li>
                             <li><strong>Genuine algorithmic novelty</strong> &mdash; On Parameter Golf, ScientistOne introduces Hessian-diagonal-weighted SVD initialization and an alternating-least-squares refinement loop with GPTQ&mdash;techniques novel to the leaderboard. Internal ablations isolate the ALS loop as the primary driver. DeepScientist contributes zero algorithmic novelty, limited to superficial environment adjustments.</li>
                             <li><strong>Consistent across domains</strong> &mdash; Two Gold Medals, two Silver Medals, and one Above Median on MLE-Bench; SOTA on Parameter Golf. The same pipeline generalizes from systems optimization to medical imaging, fine-grained recognition, 3D perception, and LLM training without modification.</li>
                         </ul>
