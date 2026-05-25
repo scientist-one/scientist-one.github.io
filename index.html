@@ -212,21 +212,20 @@
             box-shadow: 0 4px 16px rgba(0,0,0,0.08);
         }
         .file-tree {
-            width: 250px;
-            min-width: 200px;
-            border-right: 1px solid #e0e0e0;
+            width: 280px;
+            min-width: 120px;
             overflow-y: auto;
             background: #f6f8fa;
             padding: 0.5rem 0;
         }
         .file-tree-item {
-            padding: 0.4rem 1rem;
-            font-size: 0.78rem;
+            padding: 0.3rem 0.75rem;
+            font-size: 0.75rem;
             font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
             color: #555;
             border-left: 3px solid transparent;
         }
@@ -241,9 +240,48 @@
         }
         .file-tree-item .file-size {
             margin-left: auto;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             color: #999;
             white-space: nowrap;
+        }
+        .file-tree-dir {
+            padding: 0.3rem 0.75rem;
+            font-size: 0.75rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: #333;
+            font-weight: 600;
+            user-select: none;
+        }
+        .file-tree-dir:hover {
+            background: #e8e8e8;
+        }
+        .file-tree-dir .dir-chevron {
+            font-size: 0.55rem;
+            color: #999;
+            transition: transform 0.15s;
+        }
+        .file-tree-dir.collapsed .dir-chevron {
+            transform: rotate(-90deg);
+        }
+        .file-tree-group {
+            overflow: hidden;
+        }
+        .file-tree-group.collapsed {
+            display: none;
+        }
+        .resize-handle {
+            width: 4px;
+            cursor: col-resize;
+            background: #e0e0e0;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+        .resize-handle:hover, .resize-handle.dragging {
+            background: #3273dc;
         }
         .code-display {
             flex: 1;
@@ -401,6 +439,7 @@
             <!-- Code viewer (GitHub API) -->
             <div class="code-viewer-container" id="code-viewer-container" style="display:none;">
                 <div id="file-tree" class="file-tree"></div>
+                <div class="resize-handle" id="resize-handle"></div>
                 <div id="code-display" class="code-display">
                     <p style="padding:2rem;text-align:center;color:#aaa;">Select a file to view</p>
                 </div>
@@ -976,17 +1015,7 @@
             }
 
             fileTree.innerHTML = '';
-            files.forEach(function(f) {
-                var item = document.createElement('div');
-                item.className = 'file-tree-item';
-                var icon = f.name.endsWith('/') ? 'fa-folder' : 'fa-file-code';
-                item.innerHTML =
-                    '<i class="fas ' + icon + '" style="font-size:0.7rem;color:#888;"></i>' +
-                    '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(f.name) + '">' + escapeHtml(f.name) + '</span>' +
-                    '<span class="file-size">' + formatFileSize(f.size) + '</span>';
-                item.onclick = function() { loadFileContent(f, item); };
-                fileTree.appendChild(item);
-            });
+            renderFileTree(fileTree, files, 0);
 
             var firstItem = fileTree.querySelector('.file-tree-item');
             if (firstItem) firstItem.click();
@@ -1000,6 +1029,72 @@
                 '<a href="' + REPO_URL + '/tree/main/' + codePath + '" target="_blank" style="font-size:0.85rem;color:#3273dc;">View on GitHub</a>' +
                 '</div>';
         }
+    }
+
+    function buildTree(files) {
+        var root = {};
+        files.forEach(function(f) {
+            var parts = f.name.split('/');
+            var node = root;
+            for (var i = 0; i < parts.length - 1; i++) {
+                if (!node[parts[i]]) node[parts[i]] = {};
+                node = node[parts[i]];
+            }
+            node[parts[parts.length - 1]] = f;
+        });
+        return root;
+    }
+
+    function renderFileTree(container, files, depth) {
+        var tree = buildTree(files);
+        renderTreeNode(container, tree, depth);
+    }
+
+    function renderTreeNode(container, node, depth) {
+        var dirs = [];
+        var fileEntries = [];
+        Object.keys(node).sort().forEach(function(key) {
+            var val = node[key];
+            if (val.fullPath) {
+                fileEntries.push({ key: key, file: val });
+            } else {
+                dirs.push({ key: key, children: val });
+            }
+        });
+
+        dirs.forEach(function(d) {
+            var dirHeader = document.createElement('div');
+            dirHeader.className = 'file-tree-dir';
+            dirHeader.style.paddingLeft = (0.75 + depth * 0.75) + 'rem';
+            dirHeader.innerHTML =
+                '<i class="fas fa-chevron-down dir-chevron"></i>' +
+                '<i class="fas fa-folder" style="font-size:0.7rem;color:#e8a317;"></i>' +
+                '<span>' + escapeHtml(d.key) + '</span>';
+
+            var group = document.createElement('div');
+            group.className = 'file-tree-group';
+
+            dirHeader.onclick = function() {
+                dirHeader.classList.toggle('collapsed');
+                group.classList.toggle('collapsed');
+            };
+
+            container.appendChild(dirHeader);
+            container.appendChild(group);
+            renderTreeNode(group, d.children, depth + 1);
+        });
+
+        fileEntries.forEach(function(entry) {
+            var item = document.createElement('div');
+            item.className = 'file-tree-item';
+            item.style.paddingLeft = (0.75 + depth * 0.75) + 'rem';
+            item.innerHTML =
+                '<i class="fas fa-file-code" style="font-size:0.65rem;color:#888;"></i>' +
+                '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(entry.key) + '">' + escapeHtml(entry.key) + '</span>' +
+                '<span class="file-size">' + formatFileSize(entry.file.size) + '</span>';
+            item.onclick = function() { loadFileContent(entry.file, item); };
+            container.appendChild(item);
+        });
     }
 
     async function loadFileContent(fileInfo, itemElement) {
@@ -1120,6 +1215,40 @@
             loadCurrentPaper();
         }
     };
+
+    // ---- Resizable file tree ----
+
+    (function() {
+        var handle = document.getElementById('resize-handle');
+        var fileTree = document.getElementById('file-tree');
+        var dragging = false;
+
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            dragging = true;
+            handle.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var container = document.getElementById('code-viewer-container');
+            var rect = container.getBoundingClientRect();
+            var newWidth = e.clientX - rect.left;
+            if (newWidth < 120) newWidth = 120;
+            if (newWidth > rect.width * 0.6) newWidth = rect.width * 0.6;
+            fileTree.style.width = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            dragging = false;
+            handle.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    })();
 
     window.switchCategory = switchCategory;
     window.setViewMode = setViewMode;
