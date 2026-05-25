@@ -1,0 +1,125 @@
+# Kaggle iNaturalist 2019: Fine-Grained Species Classification Exploration Report
+
+## Experimental Logs
+
+The exploration followed a clear trajectory aimed at improving upon a ConvNeXt-Tiny baseline (which achieved ~74.49% Top-1 Validation Accuracy). The primary hypothesis focused on applying pairwise logit adjustments using a difficulty matrix derived from fusing visual prototype similarities with taxonomic metadata similarities. A total of 10 complete iterations were documented.
+
+1. **Iteration 1 (`solution_ecce6871`)**:
+   - **Action**: Applied a pairwise margin to the cross-entropy loss by combining purely visual prototypes and taxonomic distances with equal weights (`alpha=0.5`), scaled by `beta=1.0`.
+   - **Result**: Top-1 Val Acc 75.30%.
+   - **Takeaway**: Improved over baseline by +0.81%. Pushing confusing classes further apart explicitly in the loss function was successful.
+
+2. **Iteration 2 (`solution_1bb59fb4`)**:
+   - **Action**: Increased the margin penalty scale (`beta=2.0`), with `alpha=0.5`.
+   - **Result**: Top-1 Val Acc 74.87%.
+   - **Takeaway**: High scaling factors over-disrupted the standard cross-entropy landscape.
+
+3. **Iterations 3 & 4 (`solution_36bf5623` & `solution_01b6df7c`)**:
+   - **Action**: Ablated the fusion by testing purely visual (`alpha=1.0`) and purely taxonomic (`alpha=0.0`) similarities.
+   - **Result**: Visual: 75.65%, Taxonomic: 74.93%.
+   - **Takeaway**: Both beat the baseline, but the purely visual similarities completely overshadowed the taxonomic metadata and the fused version.
+
+4. **Iterations 5 & 6 (`solution_cecd91b3` & `solution_b5a659a9`)**:
+   - **Action**: Tested multiplicative fusion `S = V * T` and softened multiplicative fusion `S = V * (T**0.5)` to explicitly filter out spurious visual confusions between distinct taxonomic branches.
+   - **Result**: `V * T`: 75.43%, `V * (T**0.5)`: 75.16%.
+   - **Takeaway**: Multiplicative fusion was better than linear, but purely visual similarities still remained the highest-performing metric. Pretrained networks hold superior intrinsic structural priors.
+
+5. **Iterations 7 & 8 (`solution_b1004918` & `solution_dea73086`)**:
+   - **Action**: Tested "sharpening" the visual similarity matrix by squaring it (`S = V**2`), testing both `beta=1.0` and `beta=2.0`.
+   - **Result**: 75.56% and 75.19% respectively.
+   - **Takeaway**: Sharpening restricts the penalty strictly to the top confusions, performing very competitively with linear unsharpened visual matrix, but linear unsharpened `V` was still nominally better.
+
+6. **Iterations 9 & 10 (`solution_10dcfca4` & `solution_d50f42fd`)**:
+   - **Action**: Tested removing label smoothing (`label_smoothing=0`) and using an unnormalized raw visual similarity matrix `V`.
+   - **Result**: `ls=0.0`: 75.47%, `unnormalized V`: 75.77% (Best!).
+   - **Takeaway**: Label smoothing is still required. Applying an unnormalized `V` (raw cosine similarity, ranging ~0.81-1.0) creates an optimal loss surface by providing a high, nearly constant baseline margin (like CosFace) plus targeted fine-grained peaks.
+
+---
+
+## Solutions Explored
+
+Throughout the exploration, several key variants of the logit-adjustment solution were evaluated:
+
+- **Baseline**: Standard ConvNeXt-Tiny model fine-tuning with basic CrossEntropy. Achieved ~74.49% validation accuracy.
+- **Linear Fusion (Visual + Taxonomic)**: Extracted multi-layer prototypes from a pretrained ConvNeXt-Tiny on the training set, computed a pairwise cosine similarity matrix `V`. Also parsed JSON metadata to build a discrete taxonomic similarity matrix `T`. Linearly combining these to scale pairwise logit margins yielded 75.30%, proving the concept but falling short of optimal.
+- **Purely Taxonomic Logit Adjustment**: Using only the taxonomic tree depth to set margins resulted in 74.93%. It works as a valid, coarse regularizer but fails to capture complex in-the-wild visual phenomena (e.g., convergent evolution, mimicry).
+- **Multiplicative Fusion**: Fusing via `S = V * T` to explicitly zero out background correlations between disparate species reached 75.43%, proving an elegant way to enforce biological structural priors without ruining the visual gradients.
+- **Purely Visual Logit Adjustment**: Using solely the normalized `V` matrix derived from deep features achieved 75.65%. It strongly indicated that modern self-supervised/pretrained networks internalize enough robust semantic understanding that background spurious correlations are less of a factor than initially feared.
+- **Unnormalized Visual Logit Adjustment**: Using the raw cosine similarity matrix (which structurally centers around 0.81 and peaks at 1.0) achieved the highest accuracy of 75.77%.
+
+---
+
+## Empirical Findings
+
+1. **Zero-Cost Difficulty Matrices Work**: Deriving pairwise class similarity matrices directly from multi-layer prototypes or metadata before training significantly aids fine-grained classification. Applying these as margins pushes confusing classes apart in the embedding space without requiring complex multi-expert routing or heavy computational overhead.
+2. **Deep Visual Priors Beat Discrete Taxonomic Metadata**: While taxonomic metadata provides clean, explicit structural priors, pre-trained network embeddings contain richer, more nuanced representations of "difficulty." Fusing the two did not yield a "best of both worlds" scenario but rather bottlenecked the capability of the pure visual embeddings.
+3. **The "CosFace" Effect**: The final unnormalized variant revealed a fascinating dynamic: providing a high baseline margin to all classes (~0.81) whilst slightly varying the margin up to 1.0 based on visual similarities merges the standard robust margin techniques (like CosFace/ArcFace) with targeted fine-grained logit adjustments.
+4. **Label Smoothing is Necessary**: In highly granular, noisy datasets (1,010 classes), label smoothing (0.1) provides a foundational regularization that logit adjustment alone cannot entirely replace.
+
+---
+
+## Best Solution
+
+The final and highest-scoring solution (`solution_final`, equivalent to Iteration 10) achieves a validation accuracy of **75.77%** (Validation error: 0.2423). It leverages a ConvNeXt-Tiny backbone fine-tuned via an unnormalized visual-prototype logit adjustment.
+
+### Architecture & Pipeline
+- **Base Model**: `models.convnext_tiny` with `IMAGENET1K_V1` weights. The classification head (`model.classifier[2]`) is replaced with a linear layer spanning `NUM_CLASSES = 1010`.
+- **Feature Engineering (Visual Similarities)**: Before training, a sub-sample of the training data (up to 30 images per class) is passed through the pretrained backbone in `eval` mode. Features are extracted at 4 distinct intermediate stages. The class-wise mean for each stage is computed, normalized, and used to calculate a pairwise cosine similarity matrix. These 4 matrices are averaged and clamped `[0, 1]` to form a unified visual similarity matrix `V`.
+- **Training Setup**: AdamW optimizer (`lr=5e-4`, `weight_decay=1e-4`) with a CosineAnnealingLR scheduler over 7 epochs. Images are transformed via `RandomResizedCrop(224)` and `RandomHorizontalFlip`. The process relies on PyTorch AMP (Automatic Mixed Precision).
+- **Logit Adjustment**: The computed similarity matrix `V` is scaled by `beta=1.0` to form margin matrix `M`. The diagonal is set to 0. During the forward pass, `M[labels]` is directly added to the network logits before applying CrossEntropy loss (with `label_smoothing=0.1`).
+- **Inference**: Uses `Resize(256)` and `CenterCrop(224)`. Generates Top-5 predictions per image to build the Kaggle-compliant `submission.csv`.
+
+### Code Snippets
+
+**1. Multi-Stage Feature Extraction**
+```python
+class MultiStageModel(nn.Module):
+    def __init__(self, base_model):
+        super().__init__()
+        self.features = base_model.features
+        
+    def forward(self, x):
+        outputs = []
+        for i, layer in enumerate(self.features):
+            x = layer(x)
+            if i in [1, 3, 5, 7]:
+                outputs.append(F.adaptive_avg_pool2d(x, (1, 1)).flatten(1))
+        return outputs
+```
+*Caption: Extracts intermediate features from ConvNeXt-Tiny at 4 distinct layers to build multi-scale class prototypes for zero-cost visual similarity measurement.*
+
+**2. Zero-Cost Prototype and Similarity Matrix Computation**
+```python
+extractor = MultiStageModel(model).cuda().eval()
+sum_features = {stage: torch.zeros(NUM_CLASSES, dim).cuda() for stage, dim in enumerate([96, 192, 384, 768])}
+counts = torch.zeros(NUM_CLASSES).cuda()
+
+with torch.no_grad():
+    for images, labels in loader:
+        images, labels = images.cuda(), labels.cuda()
+        with torch.amp.autocast('cuda'):
+            feats = extractor(images)
+        for stage, feat in enumerate(feats):
+            sum_features[stage].index_add_(0, labels, feat.float())
+        counts.index_add_(0, labels, torch.ones_like(labels).float())
+        
+V = np.zeros((NUM_CLASSES, NUM_CLASSES))
+for stage in range(4):
+    mean_feat = sum_features[stage] / counts.unsqueeze(1).clamp(min=1)
+    mean_feat = F.normalize(mean_feat, p=2, dim=1).cpu().numpy()
+    sim = mean_feat @ mean_feat.T
+    V += np.clip(sim, 0, 1)
+V /= 4
+```
+*Caption: Aggregates and normalizes multi-layer prototypes efficiently via index addition, producing an average cosine similarity matrix robust to layer scale differences.*
+
+**3. Pairwise Logit Adjustment in the Training Loop**
+```python
+with torch.amp.autocast('cuda'):
+    logits = model(images)
+    # Apply pairwise margin
+    margins = M_tensor[labels]
+    adjusted_logits = logits + margins
+    loss = F.cross_entropy(adjusted_logits, labels, label_smoothing=0.1)
+```
+*Caption: Dynamically applies a scaled pairwise similarity matrix `M` as class margins on network logits to structurally penalize fine-grained visual confusions.*

@@ -1,0 +1,6 @@
+{
+  "term_out": "Using device: cuda\n--- Ensemble Fold 1/5 ---\nFold 1 Best Val AUC: 0.4516\nFold 1 Best Val AUC: 0.4516\n--- Ensemble Fold 2/5 ---\nFold 2 Best Val AUC: 0.4938\nFold 2 Best Val AUC: 0.4938\n--- Ensemble Fold 3/5 ---\nFold 3 Best Val AUC: 0.4862\nFold 3 Best Val AUC: 0.4862\n--- Ensemble Fold 4/5 ---\nFold 4 Best Val AUC: 0.5978\nFold 4 Best Val AUC: 0.5978\n--- Ensemble Fold 5/5 ---\nFold 5 Best Val AUC: 0.4858\nFold 5 Best Val AUC: 0.4858\nVAL_METRIC: 0.5327272727272727",
+  "exec_time": 736.0,
+  "analysis": "Tested an ensemble of 5 independent runs of the successful Geometric Affinity Pre-training Curriculum. The variance across the 5 independent pre-train/fine-tune cycles was extremely high: validation AUCs ranged from 0.4516 to 0.5978 (Fold 4). Averaging the predictions of all 5 folds yielded a final ensemble AUC of 0.5327. This reveals that the strong performance of Iteration 2 (0.5967) was dependent on a specific randomized generation of the 4,000 synthetic shapes and network initialization. Simply ensembling all models dilutes the performance because the collapsed/poorly-initialized models pull down the score. Model selection or filtering is needed before ensembling.",
+  "val_metric": 0.5327272727272727
+}

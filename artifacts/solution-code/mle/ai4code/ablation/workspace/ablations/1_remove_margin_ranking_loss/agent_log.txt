@@ -1,0 +1,1973 @@
+2026-05-02 11:35:38,370 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-02 11:35:38,370 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-02 11:35:38,401 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-05-02 11:35:38,401 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] Implement and run the following ablation experiment.
+
+Ablation name: remove_margin_ranking_loss
+Ablation description: Remove the MarginRankingLoss component from the training loop, updating the total loss to `loss = loss_ce` instead of `loss = loss_ce + 0.5 * loss_margin`.
+
+Original (known-good) `main.py`:
+```python
+import os
+import json
+import torch
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from transformers import AutoTokenizer, AutoModel
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from bisect import bisect
+from scipy.optimize import linear_sum_assignment
+
+def count_inversions(a):
+    inversions = 0
+    sorted_so_far = []
+    for i, u in enumerate(a):
+        j = bisect(sorted_so_far, u)
+        inversions += i - j
+        sorted_so_far.insert(j, u)
+    return inversions
+
+def kendall_tau(ground_truth, predictions):
+    total_inversions = 0
+    total_2max = 0
+    for gt, pred in zip(ground_truth, predictions):
+        ranks = {cell_id: i for i, cell_id in enumerate(gt)}
+        pred_ranks = [ranks[x] for x in pred if x in ranks]
+        n = len(gt)
+        total_2max += n * (n - 1)
+        total_inversions += count_inversions(pred_ranks)
+    return 1 - 4 * total_inversions / total_2max
+
+class DualEncoder(nn.Module):
+    def __init__(self, model_name='microsoft/codebert-base'):
+        super().__init__()
+        self.encoder = AutoModel.from_pretrained(model_name)
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        
+    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):
+        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]
+        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+        
+        md_feat = F.normalize(md_feat, p=2, dim=-1)
+        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)
+        
+        return md_feat, bnd_feat
+
+    def encode_text(self, input_ids, attention_mask):
+        feat = self.encoder(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]
+        return F.normalize(feat, p=2, dim=-1)
+
+def get_boundaries(nb_id, cell_types, source, max_len=512):
+    code_cells = [c for c, t in cell_types.items() if t == 'code']
+    code_count = len(code_cells)
+    
+    boundaries = []
+    # boundary 0: before first code cell
+    # boundary k: between code cell k-1 and k
+    # boundary C: after last code cell
+    for k in range(code_count + 1):
+        prev_code = source[code_cells[k-1]] if k > 0 else ""
+        next_code = source[code_cells[k]] if k < code_count else ""
+        
+        # truncate to max_len chars to save tokenization time
+        prev_code = prev_code[-max_len:] 
+        next_code = next_code[:max_len]
+        
+        bnd_text = f"Previous: {prev_code} | Next: {next_code}"
+        boundaries.append(bnd_text)
+    return code_cells, boundaries
+
+def prepare_training_pairs(ids, orders_df):
+    orders_dict = dict(zip(orders_df['id'], orders_df['cell_order']))
+    md_texts = []
+    bnd_texts = []
+    
+    for nb_id in tqdm(ids, desc="Preparing pairs"):
+        with open(f'/data/train/{nb_id}.json', 'r', encoding='utf-8') as f:
+            nb = json.load(f)
+        
+        cell_types = nb['cell_type']
+        source = nb['source']
+        order = orders_dict[nb_id].split()
+        
+        code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+        
+        current_k = 0
+        for cell_id in order:
+            if cell_types[cell_id] == 'code':
+                current_k += 1
+            else:
+                md_texts.append(source[cell_id])
+                bnd_texts.append(boundaries[current_k])
+                
+    return md_texts, bnd_texts
+
+class NBDataset(Dataset):
+    def __init__(self, md_texts, bnd_texts, tokenizer, max_len=128):
+        self.md_texts = md_texts
+        self.bnd_texts = bnd_texts
+        self.tokenizer = tokenizer
+        self.max_len = max_len
+        
+    def __len__(self):
+        return len(self.md_texts)
+        
+    def __getitem__(self, idx):
+        md = self.tokenizer(self.md_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+        bnd = self.tokenizer(self.bnd_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+        
+        return {
+            'md_input_ids': md['input_ids'].squeeze(0),
+            'md_attention_mask': md['attention_mask'].squeeze(0),
+            'bnd_input_ids': bnd['input_ids'].squeeze(0),
+            'bnd_attention_mask': bnd['attention_mask'].squeeze(0)
+        }
+
+def train():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model_name = 'microsoft/codebert-base'
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = DualEncoder(model_name).to(device)
+    
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(m
+ ... [5410 characters truncated] ... 
+[M, C+1]
+            probs = F.softmax(sims, dim=1) # [M, C+1]
+            
+            # Expected boundary position
+            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+            
+            # Assign ranks
+            cell_ranks = {}
+            for i, c in enumerate(code_cells):
+                cell_ranks[c] = i + 0.5
+                
+            for i, c in enumerate(md_cells):
+                cell_ranks[c] = exp_pos[i]
+                
+            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+            val_preds.append(pred_order)
+            val_gts.append(orders_dict[nb_id].split())
+            
+    score = kendall_tau(val_gts, val_preds)
+    print(f"VAL_METRIC: {score}")
+    
+    # Predict Test
+    test_ids = [f.split('.')[0] for f in os.listdir('/data/test') if f.endswith('.json')]
+    sub_rows = []
+    
+    with torch.no_grad():
+        for nb_id in tqdm(test_ids, desc="Predicting Test"):
+            with open(f'/data/test/{nb_id}.json', 'r', encoding='utf-8') as f:
+                nb = json.load(f)
+                
+            cell_types = nb['cell_type']
+            source = nb['source']
+            code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+            md_cells = [c for c, t in cell_types.items() if t == 'markdown']
+            
+            if not md_cells:
+                sub_rows.append({'id': nb_id, 'cell_order': ' '.join(code_cells)})
+                continue
+                
+            bnd_encs = []
+            for i in range(0, len(boundaries), 64):
+                batch_texts = boundaries[i:i+64]
+                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+                if isinstance(model, nn.DataParallel):
+                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+                else:
+                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+                bnd_encs.append(emb)
+            bnd_embs = torch.cat(bnd_encs, dim=0) # [C+1, D]
+            
+            md_encs = []
+            md_texts = [source[m_id] for m_id in md_cells]
+            for i in range(0, len(md_texts), 64):
+                batch_texts = md_texts[i:i+64]
+                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+                if isinstance(model, nn.DataParallel):
+                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+                else:
+                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+                md_encs.append(emb)
+            md_embs = torch.cat(md_encs, dim=0) # [M, D]
+            
+            if isinstance(model, nn.DataParallel):
+                scale = model.module.logit_scale.exp()
+            else:
+                scale = model.logit_scale.exp()
+                
+            sims = scale * md_embs @ bnd_embs.t()
+            probs = F.softmax(sims, dim=1)
+            
+            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+            
+            cell_ranks = {}
+            for i, c in enumerate(code_cells):
+                cell_ranks[c] = i + 0.5
+            for i, c in enumerate(md_cells):
+                cell_ranks[c] = exp_pos[i]
+                
+            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+            sub_rows.append({'id': nb_id, 'cell_order': ' '.join(pred_order)})
+            
+    sub_df = pd.DataFrame(sub_rows)
+    sub_df.to_csv('submission.csv', index=False)
+    print("Saved submission.csv")
+
+if __name__ == '__main__':
+    tokenizer, model = train()
+    validate_and_predict(tokenizer, model)
+```
+
+Your ablation directory has already been created:
+-  Workspace path (use with `read_file` / `write_file`): `ablations/1_remove_margin_ranking_loss/`
+-  Container path (use with `submit_command`):           `/workspace/ablations/1_remove_margin_ranking_loss/`
+
+Plan:
+1. Use `write_file` to save the modified script to `ablations/1_remove_margin_ranking_loss/main.py`. Implement EXACTLY the requested ablation; preserve everything else (including the submission output path, which must be `pathlib.Path(__file__).resolve().parent / "submission.csv"` so it lands at `/workspace/ablations/1_remove_margin_ranking_loss/submission.csv`).
+2. Run it: `submit_command("cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py")`. Wait via `get_job_status`.
+3. If it crashed, read the traceback, identify the root cause, patch the script with `write_file`, and re-run. Repeat until `submission.csv` is produced at `/workspace/ablations/1_remove_margin_ranking_loss/submission.csv`.
+
+Stop as soon as `submission.csv` exists and the most recent run completed cleanly. Do not iterate further.
+
+2026-05-02 11:35:46,761 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_todos({'todos': [{'active_form': 'Writing main.py with the removed margin ranking loss', 'content': 'Write main.py with the removed margin ranking loss', 'status': 'in_progress'}, {'status': 'pending', 'active_form': 'Running main.py', 'content': 'Run main.py to train and generate submission.csv'}, {'active_form': 'Checking output', 'content': 'Check if submission.csv is correctly generated', 'status': 'pending'}]})
+2026-05-02 11:35:46,763 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=8153 response_tokens=555 total=8708
+2026-05-02 11:35:46,763 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_todos | args: {'todos': [TodoItem(id=None, content='Write main.py with the removed margin ranking loss', status='in_progress', active_form='Writing main.py with the removed margin ranking loss', parent_id=None, depends_on=[]), TodoItem(id=None, content='Run main.py to train and generate submission.csv', status='pending', active_form='Running main.py', parent_id=None, depends_on=[]), TodoItem(id=None, content='Check if submission.csv is correctly generated', status='pending', active_form='Checking output', parent_id=None, depends_on=[])]}
+2026-05-02 11:35:46,763 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_todos | result: Updated 3 todos: 0 completed, 1 in progress, 2 pending
+2026-05-02 11:35:46,764 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-05-02 11:35:46,765 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated 3 todos: 0 completed, 1 in progress, 2 pending
+2026-05-02 11:36:13,027 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_file({'content': 'import os\nimport json\nimport torch\nimport numpy as np\nimport pandas as pd\nfrom tqdm import tqdm\nfrom transformers import AutoTokenizer, AutoModel\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom torch.utils.data import Dataset, DataLoader\nfrom bisect import bisect\nfrom scipy.optimize import linear_sum_assignment\nimport pathlib\n\ndef count_inversions(a):\n    inversions = 0\n    sorted_so_far = []\n    for i, u in enumerate(a):\n        j = bisect(sorted_so_far, u)\n        inversions += i - j\n        sorted_so_far.insert(j, u)\n    return inversions\n\ndef kendall_tau(ground_truth, predictions):\n    total_inversions = 0\n    total_2max = 0\n    for gt, pred in zip(ground_truth, predictions):\n        ranks = {cell_id: i for i, cell_id in enumerate(gt)}\n        pred_ranks = [ranks[x] for x in pred if x in ranks]\n        n = len(gt)\n        total_2max += n * (n - 1)\n        total_inversions += count_inversions(pred_ranks)\n    return 1 - 4 * total_inversions / total_2max\n\nclass DualEncoder(nn.Module):\n    def __init__(self, model_name=\'microsoft/codebert-base\'):\n        super().__init__()\n        self.encoder = AutoModel.from_pretrained(model_name)\n        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))\n        \n    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):\n        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]\n        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]\n        \n        md_feat = F.normalize(md_feat, p=2, dim=-1)\n        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)\n        \n        return md_feat, bnd_feat\n\n    def encode_text(self, input_ids, attention_mask):\n        feat = self.encoder(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]\n        return F.normalize(feat, p=2, dim=-1)\n\ndef get_boundaries(nb_id, cell_types, source, max_len=512):\n    code_cells = [c for c, t in cell_types.items() if t == \'code\']\n    code_count = len(code_cells)\n    \n    boundaries = []\n    # boundary 0: before first code cell\n    # boundary k: between code cell k-1 and k\n    # boundary C: after last code cell\n    for k in range(code_count + 1):\n        prev_code = source[code_cells[k-1]] if k > 0 else ""\n        next_code = source[code_cells[k]] if k < code_count else ""\n        \n        # truncate to max_len chars to save tokenization time\n        prev_code = prev_code[-max_len:] \n        next_code = next_code[:max_len]\n        \n        bnd_text = f"Previous: {prev_code} | Next: {next_code}"\n        boundaries.append(bnd_text)\n    return code_cells, boundaries\n\ndef prepare_training_pairs(ids, orders_df):\n    orders_dict = dict(zip(orders_df[\'id\'], orders_df[\'cell_order\']))\n    md_texts = []\n    bnd_texts = []\n    \n    for nb_id in tqdm(ids, desc="Preparing pairs"):\n        with open(f\'/data/train/{nb_id}.json\', \'r\', encoding=\'utf-8\') as f:\n            nb = json.load(f)\n        \n        cell_types = nb[\'cell_type\']\n        source = nb[\'source\']\n        order = orders_dict[nb_id].split()\n        \n        code_cells, boundaries = get_boundaries(nb_id, cell_types, source)\n        \n        current_k = 0\n        for cell_id in order:\n            if cell_types[cell_id] == \'code\':\n                current_k += 1\n            else:\n                md_texts.append(source[cell_id])\n                bnd_texts.append(boundaries[current_k])\n                \n    return md_texts, bnd_texts\n\nclass NBDataset(Dataset):\n    def __init__(self, md_texts, bnd_texts, tokenizer, max_len=128):\n        self.md_texts = md_texts\n        self.bnd_texts = bnd_texts\n        self.tokenizer = tokenizer\n        self.max_len = max_len\n        \n    def __len__(self):\n        return len(self.md_texts)\n        \n    def __getitem__(self, idx):\n        md = self.tokenizer(self.md_texts[idx], max_length=self.max_len, padding=\'max_length\', truncation=True, return_tensors=\'pt\')\n        bnd = self.tokenizer(self.bnd_texts[idx], max_length=self.max_len, padding=\'max_length\', truncation=True, return_tensors=\'pt\')\n        \n        return {\n            \'md_input_ids\': md[\'input_ids\'].squeeze(0),\n            \'md_attention_mask\': md[\'attention_mask\'].squeeze(0),\n            \'bnd_input_ids\': bnd[\'input_ids\'].squeeze(0),\n            \'bnd_attention_mask\': bnd[\'attention_mask\'].squeeze(0)\n        }\n\ndef train():\n    device = torch.device(\'cuda\' if torch.cuda.is_available() else \'cpu\')\n    model_name = \'microsoft/codebert-base\'\n    tokenizer = AutoTokenizer.from_pretrained(model_name)\n    model = DualEncoder(model_name).to(device)\n    \n    if torch.cuda.device_count() > 1:\n        model = nn.DataParallel(model)\n    \n    train_ids = pd.read_csv(\'/workspace/metadata/train_ids.csv\')[\'id\'].values\n    orders_df = pd.read_csv(\'/d
+ ... [3991 characters truncated] ... 
+e(0, len(md_texts), 64):\n                batch_texts = md_texts[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                md_encs.append(emb)\n            md_embs = torch.cat(md_encs, dim=0) # [M, D]\n            \n            # Compute similarities\n            if isinstance(model, nn.DataParallel):\n                scale = model.module.logit_scale.exp()\n            else:\n                scale = model.logit_scale.exp()\n                \n            sims = scale * md_embs @ bnd_embs.t() # [M, C+1]\n            probs = F.softmax(sims, dim=1) # [M, C+1]\n            \n            # Expected boundary position\n            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)\n            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()\n            \n            # Assign ranks\n            cell_ranks = {}\n            for i, c in enumerate(code_cells):\n                cell_ranks[c] = i + 0.5\n                \n            for i, c in enumerate(md_cells):\n                cell_ranks[c] = exp_pos[i]\n                \n            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])\n            val_preds.append(pred_order)\n            val_gts.append(orders_dict[nb_id].split())\n            \n    score = kendall_tau(val_gts, val_preds)\n    print(f"VAL_METRIC: {score}")\n    \n    # Predict Test\n    test_ids = [f.split(\'.\')[0] for f in os.listdir(\'/data/test\') if f.endswith(\'.json\')]\n    sub_rows = []\n    \n    with torch.no_grad():\n        for nb_id in tqdm(test_ids, desc="Predicting Test"):\n            with open(f\'/data/test/{nb_id}.json\', \'r\', encoding=\'utf-8\') as f:\n                nb = json.load(f)\n                \n            cell_types = nb[\'cell_type\']\n            source = nb[\'source\']\n            code_cells, boundaries = get_boundaries(nb_id, cell_types, source)\n            md_cells = [c for c, t in cell_types.items() if t == \'markdown\']\n            \n            if not md_cells:\n                sub_rows.append({\'id\': nb_id, \'cell_order\': \' \'.join(code_cells)})\n                continue\n                \n            bnd_encs = []\n            for i in range(0, len(boundaries), 64):\n                batch_texts = boundaries[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                bnd_encs.append(emb)\n            bnd_embs = torch.cat(bnd_encs, dim=0) # [C+1, D]\n            \n            md_encs = []\n            md_texts = [source[m_id] for m_id in md_cells]\n            for i in range(0, len(md_texts), 64):\n                batch_texts = md_texts[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                md_encs.append(emb)\n            md_embs = torch.cat(md_encs, dim=0) # [M, D]\n            \n            if isinstance(model, nn.DataParallel):\n                scale = model.module.logit_scale.exp()\n            else:\n                scale = model.logit_scale.exp()\n                \n            sims = scale * md_embs @ bnd_embs.t()\n            probs = F.softmax(sims, dim=1)\n            \n            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)\n            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()\n            \n            cell_ranks = {}\n            for i, c in enumerate(code_cells):\n                cell_ranks[c] = i + 0.5\n            for i, c in enumerate(md_cells):\n                cell_ranks[c] = exp_pos[i]\n                \n            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])\n            sub_rows.append({\'id\': nb_id, \'cell_order\': \' \'.join(pred_order)})\n            \n    sub_df = pd.DataFrame(sub_rows)\n    sub_df.to_csv(str(pathlib.Path(__file__).resolve().parent / \'submission.csv\'), index=False)\n    print("Saved submission.csv")\n\nif __name__ == \'__main__\':\n    tokenizer, model = train()\n    validate_and_predict(tokenizer, model)\n', 'path': 'ablations/1_remove_margin_ranking_loss/main.py'})
+2026-05-02 11:36:13,029 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=8386 response_tokens=4198 total=12584
+2026-05-02 11:36:13,029 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_file | args: {'path': 'ablations/1_remove_margin_ranking_loss/main.py', 'content': 'import os\nimport json\nimport torch\nimport numpy as np\nimport pandas as pd\nfrom tqdm import tqdm\nfrom transformers import AutoTokenizer, AutoModel\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom torch.utils.data import Dataset, DataLoader\nfrom bisect import bisect\nfrom scipy.optimize import linear_sum_assignment\nimport pathlib\n\ndef count_inversions(a):\n    inversions = 0\n    sorted_so_far = []\n    for i, u in enumerate(a):\n        j = bisect(sorted_so_far, u)\n        inversions += i - j\n        sorted_so_far.insert(j, u)\n    return inversions\n\ndef kendall_tau(ground_truth, predictions):\n    total_inversions = 0\n    total_2max = 0\n    for gt, pred in zip(ground_truth, predictions):\n        ranks = {cell_id: i for i, cell_id in enumerate(gt)}\n        pred_ranks = [ranks[x] for x in pred if x in ranks]\n        n = len(gt)\n        total_2max += n * (n - 1)\n        total_inversions += count_inversions(pred_ranks)\n    return 1 - 4 * total_inversions / total_2max\n\nclass DualEncoder(nn.Module):\n    def __init__(self, model_name=\'microsoft/codebert-base\'):\n        super().__init__()\n        self.encoder = AutoModel.from_pretrained(model_name)\n        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))\n        \n    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):\n        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]\n        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]\n        \n        md_feat = F.normalize(md_feat, p=2, dim=-1)\n        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)\n        \n        return md_feat, bnd_feat\n\n    def encode_text(self, input_ids, attention_mask):\n        feat = self.encoder(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]\n        return F.normalize(feat, p=2, dim=-1)\n\ndef get_boundaries(nb_id, cell_types, source, max_len=512):\n    code_cells = [c for c, t in cell_types.items() if t == \'code\']\n    code_count = len(code_cells)\n    \n    boundaries = []\n    # boundary 0: before first code cell\n    # boundary k: between code cell k-1 and k\n    # boundary C: after last code cell\n    for k in range(code_count + 1):\n        prev_code = source[code_cells[k-1]] if k > 0 else ""\n        next_code = source[code_cells[k]] if k < code_count else ""\n        \n        # truncate to max_len chars to save tokenization time\n        prev_code = prev_code[-max_len:] \n        next_code = next_code[:max_len]\n        \n        bnd_text = f"Previous: {prev_code} | Next: {next_code}"\n        boundaries.append(bnd_text)\n    return code_cells, boundaries\n\ndef prepare_training_pairs(ids, orders_df):\n    orders_dict = dict(zip(orders_df[\'id\'], orders_df[\'cell_order\']))\n    md_texts = []\n    bnd_texts = []\n    \n    for nb_id in tqdm(ids, desc="Preparing pairs"):\n        with open(f\'/data/train/{nb_id}.json\', \'r\', encoding=\'utf-8\') as f:\n            nb = json.load(f)\n        \n        cell_types = nb[\'cell_type\']\n        source = nb[\'source\']\n        order = orders_dict[nb_id].split()\n        \n        code_cells, boundaries = get_boundaries(nb_id, cell_types, source)\n        \n        current_k = 0\n        for cell_id in order:\n            if cell_types[cell_id] == \'code\':\n                current_k += 1\n            else:\n                md_texts.append(source[cell_id])\n                bnd_texts.append(boundaries[current_k])\n                \n    return md_texts, bnd_texts\n\nclass NBDataset(Dataset):\n    def __init__(self, md_texts, bnd_texts, tokenizer, max_len=128):\n        self.md_texts = md_texts\n        self.bnd_texts = bnd_texts\n        self.tokenizer = tokenizer\n        self.max_len = max_len\n        \n    def __len__(self):\n        return len(self.md_texts)\n        \n    def __getitem__(self, idx):\n        md = self.tokenizer(self.md_texts[idx], max_length=self.max_len, padding=\'max_length\', truncation=True, return_tensors=\'pt\')\n        bnd = self.tokenizer(self.bnd_texts[idx], max_length=self.max_len, padding=\'max_length\', truncation=True, return_tensors=\'pt\')\n        \n        return {\n            \'md_input_ids\': md[\'input_ids\'].squeeze(0),\n            \'md_attention_mask\': md[\'attention_mask\'].squeeze(0),\n            \'bnd_input_ids\': bnd[\'input_ids\'].squeeze(0),\n            \'bnd_attention_mask\': bnd[\'attention_mask\'].squeeze(0)\n        }\n\ndef train():\n    device = torch.device(\'cuda\' if torch.cuda.is_available() else \'cpu\')\n    model_name = \'microsoft/codebert-base\'\n    tokenizer = AutoTokenizer.from_pretrained(model_name)\n    model = DualEncoder(model_name).to(device)\n    \n    if torch.cuda.device_count() > 1:\n        model = nn.DataParallel(model)\n    \n    train_ids = pd.read_csv(\'/workspace/metadata/train_i
+ ... [3991 characters truncated] ... 
+rce[m_id] for m_id in md_cells]\n            for i in range(0, len(md_texts), 64):\n                batch_texts = md_texts[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                md_encs.append(emb)\n            md_embs = torch.cat(md_encs, dim=0) # [M, D]\n            \n            # Compute similarities\n            if isinstance(model, nn.DataParallel):\n                scale = model.module.logit_scale.exp()\n            else:\n                scale = model.logit_scale.exp()\n                \n            sims = scale * md_embs @ bnd_embs.t() # [M, C+1]\n            probs = F.softmax(sims, dim=1) # [M, C+1]\n            \n            # Expected boundary position\n            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)\n            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()\n            \n            # Assign ranks\n            cell_ranks = {}\n            for i, c in enumerate(code_cells):\n                cell_ranks[c] = i + 0.5\n                \n            for i, c in enumerate(md_cells):\n                cell_ranks[c] = exp_pos[i]\n                \n            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])\n            val_preds.append(pred_order)\n            val_gts.append(orders_dict[nb_id].split())\n            \n    score = kendall_tau(val_gts, val_preds)\n    print(f"VAL_METRIC: {score}")\n    \n    # Predict Test\n    test_ids = [f.split(\'.\')[0] for f in os.listdir(\'/data/test\') if f.endswith(\'.json\')]\n    sub_rows = []\n    \n    with torch.no_grad():\n        for nb_id in tqdm(test_ids, desc="Predicting Test"):\n            with open(f\'/data/test/{nb_id}.json\', \'r\', encoding=\'utf-8\') as f:\n                nb = json.load(f)\n                \n            cell_types = nb[\'cell_type\']\n            source = nb[\'source\']\n            code_cells, boundaries = get_boundaries(nb_id, cell_types, source)\n            md_cells = [c for c, t in cell_types.items() if t == \'markdown\']\n            \n            if not md_cells:\n                sub_rows.append({\'id\': nb_id, \'cell_order\': \' \'.join(code_cells)})\n                continue\n                \n            bnd_encs = []\n            for i in range(0, len(boundaries), 64):\n                batch_texts = boundaries[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                bnd_encs.append(emb)\n            bnd_embs = torch.cat(bnd_encs, dim=0) # [C+1, D]\n            \n            md_encs = []\n            md_texts = [source[m_id] for m_id in md_cells]\n            for i in range(0, len(md_texts), 64):\n                batch_texts = md_texts[i:i+64]\n                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors=\'pt\').to(device)\n                if isinstance(model, nn.DataParallel):\n                    emb = model.module.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                else:\n                    emb = model.encode_text(t[\'input_ids\'], t[\'attention_mask\'])\n                md_encs.append(emb)\n            md_embs = torch.cat(md_encs, dim=0) # [M, D]\n            \n            if isinstance(model, nn.DataParallel):\n                scale = model.module.logit_scale.exp()\n            else:\n                scale = model.logit_scale.exp()\n                \n            sims = scale * md_embs @ bnd_embs.t()\n            probs = F.softmax(sims, dim=1)\n            \n            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)\n            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()\n            \n            cell_ranks = {}\n            for i, c in enumerate(code_cells):\n                cell_ranks[c] = i + 0.5\n            for i, c in enumerate(md_cells):\n                cell_ranks[c] = exp_pos[i]\n                \n            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])\n            sub_rows.append({\'id\': nb_id, \'cell_order\': \' \'.join(pred_order)})\n            \n    sub_df = pd.DataFrame(sub_rows)\n    sub_df.to_csv(str(pathlib.Path(__file__).resolve().parent / \'submission.csv\'), index=False)\n    print("Saved submission.csv")\n\nif __name__ == \'__main__\':\n    tokenizer, model = train()\n    validate_and_predict(tokenizer, model)\n'}
+2026-05-02 11:36:13,053 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_file | result: Wrote 332 lines to /rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_remove_margin_ranking_loss/main.py
+2026-05-02 11:36:13,054 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #3] Sending request to model (step 3)...
+2026-05-02 11:36:13,054 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Wrote 332 lines to /rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_remove_margin_ranking_loss/main.py
+2026-05-02 11:36:16,474 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'completed', 'todo_id': '1395dccb'})
+2026-05-02 11:36:16,474 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'in_progress', 'todo_id': '90164737'})
+2026-05-02 11:36:16,474 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=12721 response_tokens=67 total=12788
+2026-05-02 11:36:16,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '1395dccb', 'status': 'completed'}
+2026-05-02 11:36:16,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Write main.py with the removed margin ranking loss' status to 'completed'
+2026-05-02 11:36:16,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '90164737', 'status': 'in_progress'}
+2026-05-02 11:36:16,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run main.py to train and generate submission.csv' status to 'in_progress'
+2026-05-02 11:36:16,476 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #4] Sending request to model (step 4)...
+2026-05-02 11:36:16,476 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Write main.py with the removed margin ranking loss' status to 'completed'
+[tool-return] Updated todo 'Run main.py to train and generate submission.csv' status to 'in_progress'
+2026-05-02 11:36:19,460 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py'})
+2026-05-02 11:36:19,460 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=12848 response_tokens=40 total=12888
+2026-05-02 11:36:19,461 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py', 'gpu_ids': ''}
+2026-05-02 11:36:19,461 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: 4d24fe97
+Use get_job_status('4d24fe97') to check progress and retrieve output when completed.
+2026-05-02 11:36:19,462 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #5] Sending request to model (step 5)...
+2026-05-02 11:36:19,462 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: 4d24fe97
+Use get_job_status('4d24fe97') to check progress and retrieve output when completed.
+2026-05-02 11:36:22,281 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': '4d24fe97'})
+2026-05-02 11:36:22,281 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=12948 response_tokens=27 total=12975
+2026-05-02 11:36:22,282 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': '4d24fe97'}
+2026-05-02 11:37:49,365 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: 4d24fe97
+Status: completed
+Command: cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 90s
+
+Output:
+
+STDERR:
+2026-05-02 11:36:35.683537: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:36:36.818569: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:36:38.452017: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 96/50000 [00:00<00:53, 941.02it/s]
+Preparing pairs:   0%|          | 192/50000 [00:00<00:52, 947.21it/s]
+Preparing pairs:   1%|          | 288/50000 [00:00<00:52, 952.52it/s]
+Preparing pairs:   1%|          | 385/50000 [00:00<00:51, 956.93it/s]
+Preparing pairs:   1%|          | 481/50000 [00:00<00:51, 957.24it/s]
+Preparing pairs:   1%|          | 577/50000 [00:00<00:51, 957.38it/s]
+Preparing pairs:   1%|▏         | 673/50000 [00:00<00:51, 954.53it/s]
+Preparing pairs:   2%|▏         | 770/50000 [00:00<00:51, 956.35it/s]
+Preparing pairs:   2%|▏         | 866/50000 [00:00<00:51, 954.10it/s]
+Preparing pairs:   2%|▏         | 962/50000 [00:01<00:51, 949.79it/s]
+Preparing pairs:   2%|▏         | 1059/50000 [00:01<00:51, 953.17it/s]
+Preparing pairs:   2%|▏         | 1158/50000 [00:01<00:50, 962.03it/s]
+Preparing pairs:   3%|▎         | 1255/50000 [00:01<00:50, 961.69it/s]
+Preparing pairs:   3%|▎         | 1352/50000 [00:01<00:50, 961.15it/s]
+Preparing pairs:   3%|▎         | 1449/50000 [00:01<00:50, 959.75it/s]
+Preparing pairs:   3%|▎         | 1546/50000 [00:01<00:50, 961.78it/s]
+Preparing pairs:   3%|▎         | 1643/50000 [00:01<00:50, 963.45it/s]
+Preparing pairs:   3%|▎         | 1740/50000 [00:01<00:50, 961.46it/s]
+Preparing pairs:   4%|▎         | 1837/50000 [00:01<00:50, 961.62it/s]
+Preparing pairs:   4%|▍         | 1935/50000 [00:02<00:49, 965.68it/s]
+Preparing pairs:   4%|▍         | 2032/50000 [00:02<00:50, 956.13it/s]
+Preparing pairs:   4%|▍         | 2130/50000 [00:02<00:49, 960.39it/s]
+Preparing pairs:   4%|▍         | 2227/50000 [00:02<00:49, 959.78it/s]
+Preparing pairs:   5%|▍         | 2325/50000 [00:02<00:49, 963.65it/s]
+Preparing pairs:   5%|▍         | 2423/50000 [00:02<00:49, 967.86it/s]
+Preparing pairs:   5%|▌         | 2520/50000 [00:02<00:49, 963.66it/s]
+Preparing pairs:   5%|▌         | 2617/50000 [00:02<00:49, 962.62it/s]
+Preparing pairs:   5%|▌         | 2714/50000 [00:02<00:49, 962.43it/s]
+Preparing pairs:   6%|▌         | 2811/50000 [00:02<00:48, 964.59it/s]
+Preparing pairs:   6%|▌         | 2909/50000 [00:03<00:48, 968.03it/s]
+Preparing pairs:   6%|▌         | 3006/50000 [00:03<00:48, 968.26it/s]
+Preparing pairs:   6%|▌         | 3103/50000 [00:03<00:49, 944.64it/s]
+Preparing pairs:   6%|▋         | 3198/50000 [00:03<00:49, 941.21it/s]
+Preparing pairs:   7%|▋         | 3295/50000 [00:03<00:49, 948.54it/s]
+Preparing pairs:   7%|▋         | 3392/50000 [00:03<00:48, 954.39it/s]
+Preparing pairs:   7%|▋         | 3488/50000 [00:03<00:49, 945.35it/s]
+Preparing pairs:   7%|▋         | 3586/50000 [00:03<00:48, 955.00it/s]
+Preparing pairs:   7%|▋         | 3683/50000 [00:03<00:48, 957.17it/s]
+Preparing pairs:   8%|▊         | 3779/50000 [00:03<00:48, 957.45it/s]
+Preparing pairs:   8%|▊         | 3875/50000 [00:04<00:48, 957.16it/s]
+Preparing pairs:   8%|▊         | 3971/50000 [00:04<00:48, 951.67it/s]
+Preparing pairs:   8%|▊         | 4067/50000 [00:04<00:48, 951.97it/s]
+Preparing pairs:   8%|▊         | 4163/50000 [00:04<00:48, 948.83it/s]
+Preparing pairs:   9%|▊         | 4260/50000 [00:04<00:48, 952.88it/s]
+Preparing pairs:   9%|▊         | 4357/50000 [00:04<00:47, 957.17it/s]
+Preparing pairs:   9%|▉         | 4453/50000 [00:04<00:47, 953.50it/s]
+Preparing pairs:   9%|▉         | 4549/50000 [00:04<00:47, 950.65it/s]
+Preparing pairs:   9%|▉         | 4645/50000 [00:04<00:47, 952.78it/s]
+Preparing pairs:   9%|▉         | 4744/50000 [00:04<00:47, 962.06it/s]
+Preparing pairs:  10%|▉         | 4841/50000 [00:05<00:46, 963.09it/s]
+Preparing pairs:  10%|▉         | 4938/50000 [00:05<00:47, 957.61it/s]
+Preparing pairs:  10%|█         | 5035/50000 [00:05<00:46, 959.04it/s]
+Preparing pairs:  10%|█         | 5132/50000 [00:05<00:46, 959.76it/s]
+Preparing pairs:  10%|█         | 5228/50000 [00:05<00:46, 955.09it/s]
+Preparing pairs:  11%|█         | 5325/50000 [00:05<00:46, 957.80it/s]
+Preparing pairs:  11%|█         | 5423/50000 [00:05<00:46, 964.02it/s]
+Preparing pairs:  
+ ... [178 characters truncated] ... 
+^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/ablations/1_remove_margin_ranking_loss/main.py", line 43, in forward
+    bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 862, in forward
+    encoder_outputs = self.encoder(
+                      ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 606, in forward
+    layer_outputs = layer_module(
+                    ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/modeling_layers.py", line 94, in __call__
+    return super().__call__(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/utils/deprecation.py", line 172, in wrapped_func
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 543, in forward
+    layer_output = apply_chunking_to_forward(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/pytorch_utils.py", line 257, in apply_chunking_to_forward
+    return forward_fn(*input_tensors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 551, in feed_forward_chunk
+    intermediate_output = self.intermediate(attention_output)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 466, in forward
+    hidden_states = self.intermediate_act_fn(hidden_states)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/activations.py", line 85, in forward
+    return self.act(input)
+           ^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 384.00 MiB. GPU 0 has a total capacity of 79.19 GiB of which 300.94 MiB is free. Process 1840375 has 41.39 GiB memory in use. Including non-PyTorch memory, this process has 37.49 GiB memory in use. Of the allocated memory 36.03 GiB is allocated by PyTorch, and 37.02 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+
+[Exit code: 1]
+2026-05-02 11:37:49,369 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #6] Sending request to model (step 6)...
+2026-05-02 11:37:49,369 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: 4d24fe97
+Status: completed
+Command: cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 90s
+
+Output:
+
+STDERR:
+2026-05-02 11:36:35.683537: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:36:36.818569: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:36:38.452017: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 96/50000 [00:00<00:53, 941.02it/s]
+Preparing pairs:   0%|          | 192/50000 [00:00<00:52, 947.21it/s]
+Preparing pairs:   1%|          | 288/50000 [00:00<00:52, 952.52it/s]
+Preparing pairs:   1%|          | 385/50000 [00:00<00:51, 956.93it/s]
+Preparing pairs:   1%|          | 481/50000 [00:00<00:51, 957.24it/s]
+Preparing pairs:   1%|          | 577/50000 [00:00<00:51, 957.38it/s]
+Preparing pairs:   1%|▏         | 673/50000 [00:00<00:51, 954.53it/s]
+Preparing pairs:   2%|▏         | 770/50000 [00:00<00:51, 956.35it/s]
+Preparing pairs:   2%|▏         | 866/50000 [00:00<00:51, 954.10it/s]
+Preparing pairs:   2%|▏         | 962/50000 [00:01<00:51, 949.79it/s]
+Preparing pairs:   2%|▏         | 1059/50000 [00:01<00:51, 953.17it/s]
+Preparing pairs:   2%|▏         | 1158/50000 [00:01<00:50, 962.03it/s]
+Preparing pairs:   3%|▎         | 1255/50000 [00:01<00:50, 961.69it/s]
+Preparing pairs:   3%|▎         | 1352/50000 [00:01<00:50, 961.15it/s]
+Preparing pairs:   3%|▎         | 1449/50000 [00:01<00:50, 959.75it/s]
+Preparing pairs:   3%|▎         | 1546/50000 [00:01<00:50, 961.78it/s]
+Preparing pairs:   3%|▎         | 1643/50000 [00:01<00:50, 963.45it/s]
+Preparing pairs:   3%|▎         | 1740/50000 [00:01<00:50, 961.46it/s]
+Preparing pairs:   4%|▎         | 1837/50000 [00:01<00:50, 961.62it/s]
+Preparing pairs:   4%|▍         | 1935/50000 [00:02<00:49, 965.68it/s]
+Preparing pairs:   4%|▍         | 2032/50000 [00:02<00:50, 956.13it/s]
+Preparing pairs:   4%|▍         | 2130/50000 [00:02<00:49, 960.39it/s]
+Preparing pairs:   4%|▍         | 2227/50000 [00:02<00:49, 959.78it/s]
+Preparing pairs:   5%|▍         | 2325/50000 [00:02<00:49, 963.65it/s]
+Preparing pairs:   5%|▍         | 2423/50000 [00:02<00:49, 967.86it/s]
+Preparing pairs:   5%|▌         | 2520/50000 [00:02<00:49, 963.66it/s]
+Preparing pairs:   5%|▌         | 2617/50000 [00:02<00:49, 962.62it/s]
+Preparing pairs:   5%|▌         | 2714/50000 [00:02<00:49, 962.43it/s]
+Preparing pairs:   6%|▌         | 2811/50000 [00:02<00:48, 964.59it/s]
+Preparing pairs:   6%|▌         | 2909/50000 [00:03<00:48, 968.03it/s]
+Preparing pairs:   6%|▌         | 3006/50000 [00:03<00:48, 968.26it/s]
+Preparing pairs:   6%|▌         | 3103/50000 [00:03<00:49, 944.64it/s]
+Preparing pairs:   6%|▋         | 3198/50000 [00:03<00:49, 941.21it/s]
+Preparing pairs:   7%|▋         | 3295/50000 [00:03<00:49, 948.54it/s]
+Preparing pairs:   7%|▋         | 3392/50000 [00:03<00:48, 954.39it/s]
+Preparing pairs:   7%|▋         | 3488/50000 [00:03<00:49, 945.35it/s]
+Preparing pairs:   7%|▋         | 3586/50000 [00:03<00:48, 955.00it/s]
+Preparing pairs:   7%|▋         | 3683/50000 [00:03<00:48, 957.17it/s]
+Preparing pairs:   8%|▊         | 3779/50000 [00:03<00:48, 957.45it/s]
+Preparing pairs:   8%|▊         | 3875/50000 [00:04<00:48, 957.16it/s]
+Preparing pairs:   8%|▊         | 3971/50000 [00:04<00:48, 951.67it/s]
+Preparing pairs:   8%|▊         | 4067/50000 [00:04<00:48, 951.97it/s]
+Preparing pairs:   8%|▊         | 4163/50000 [00:04<00:48, 948.83it/s]
+Preparing pairs:   9%|▊         | 4260/50000 [00:04<00:48, 952.88it/s]
+Preparing pairs:   9%|▊         | 4357/50000 [00:04<00:47, 957.17it/s]
+Preparing pairs:   9%|▉         | 4453/50000 [00:04<00:47, 953.50it/s]
+Preparing pairs:   9%|▉         | 4549/50000 [00:04<00:47, 950.65it/s]
+Preparing pairs:   9%|▉         | 4645/50000 [00:04<00:47, 952.78it/s]
+Preparing pairs:   9%|▉         | 4744/50000 [00:04<00:47, 962.06it/s]
+Preparing pairs:  10%|▉         | 4841/50000 [00:05<00:46, 963.09it/s]
+Preparing pairs:  10%|▉         | 4938/50000 [00:05<00:47, 957.61it/s]
+Preparing pairs:  10%|█         | 5035/50000 [00:05<00:46, 959.04it/s]
+Preparing pairs:  10%|█         | 5132/50000 [00:05<00:46, 959.76it/s]
+Preparing pairs:  10%|█         | 5228/50000 [00:05<00:46, 955.09it/s]
+Preparing pairs:  11%|█         | 5325/50000 [00:05<00:46, 957.80it/s]
+Preparing pairs:  11%|█         | 5423/50000 [00:05<00:46, 964.02it/s]
+Prep
+ ... [192 characters truncated] ... 
+^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/ablations/1_remove_margin_ranking_loss/main.py", line 43, in forward
+    bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 862, in forward
+    encoder_outputs = self.encoder(
+                      ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 606, in forward
+    layer_outputs = layer_module(
+                    ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/modeling_layers.py", line 94, in __call__
+    return super().__call__(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/utils/deprecation.py", line 172, in wrapped_func
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 543, in forward
+    layer_output = apply_chunking_to_forward(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/pytorch_utils.py", line 257, in apply_chunking_to_forward
+    return forward_fn(*input_tensors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 551, in feed_forward_chunk
+    intermediate_output = self.intermediate(attention_output)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/models/roberta/modeling_roberta.py", line 466, in forward
+    hidden_states = self.intermediate_act_fn(hidden_states)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/transformers/activations.py", line 85, in forward
+    return self.act(input)
+           ^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 384.00 MiB. GPU 0 has a total capacity of 79.19 GiB of which 300.94 MiB is free. Process 1840375 has 41.39 GiB memory in use. Including non-PyTorch memory, this process has 37.49 GiB memory in use. Of the allocated memory 36.03 GiB is allocated by PyTorch, and 37.02 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+
+[Exit code: 1]
+2026-05-02 11:37:56,791 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_gpu_status({})
+2026-05-02 11:37:56,791 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=19127 response_tokens=241 total=19368
+2026-05-02 11:37:56,792 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_gpu_status | args: {}
+2026-05-02 11:37:57,051 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_gpu_status | result: Allocated GPU IDs for this branch: 0,1
+
+Sat May  2 11:37:56 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100 80GB HBM3          On  |   00000000:04:00.0 Off |                    0 |
+| N/A   37C    P0            122W /  700W |   42397MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA H100 80GB HBM3          On  |   00000000:05:00.0 Off |                    0 |
+| N/A   32C    P0             72W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
++-----------------------------------------------------------------------------------------+
+
+2026-05-02 11:37:57,053 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #7] Sending request to model (step 7)...
+2026-05-02 11:37:57,053 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Allocated GPU IDs for this branch: 0,1
+
+Sat May  2 11:37:56 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100 80GB HBM3          On  |   00000000:04:00.0 Off |                    0 |
+| N/A   37C    P0            122W /  700W |   42397MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA H100 80GB HBM3          On  |   00000000:05:00.0 Off |                    0 |
+| N/A   32C    P0             72W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
++-----------------------------------------------------------------------------------------+
+
+2026-05-02 11:38:06,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'command': 'ps aux | grep python'})
+2026-05-02 11:38:06,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=18566 response_tokens=665 total=19231
+2026-05-02 11:38:06,014 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': 'ps aux | grep python', 'gpu_ids': ''}
+2026-05-02 11:38:06,014 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: 7f2fb790
+Use get_job_status('7f2fb790') to check progress and retrieve output when completed.
+2026-05-02 11:38:06,015 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #8] Sending request to model (step 8)...
+2026-05-02 11:38:06,021 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: 7f2fb790
+Use get_job_status('7f2fb790') to check progress and retrieve output when completed.
+2026-05-02 11:38:08,889 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': '7f2fb790'})
+2026-05-02 11:38:08,889 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=18737 response_tokens=26 total=18763
+2026-05-02 11:38:08,890 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': '7f2fb790'}
+2026-05-02 11:38:08,890 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: 7f2fb790
+Status: completed
+Command: ps aux | grep python
+Duration: 2s
+
+Output:
+nobody      2643  0.0  0.0  33192 16640 ?        Ss   Apr27   0:00 /usr/bin/python3 /usr/bin/networkd-dispatcher --run-startup-triggers
+nobody      2939  0.0  0.0 110144 18304 ?        Ssl  Apr27   0:00 /usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal
+jiefeng+  261905  0.0  0.0 4431284 224640 ?      Sl   May01   1:15 /rmeng_data/envs/oas/bin/python3.11 /rmeng_data/envs/oas/bin/ray start --head --node-ip-address=172.16.15.235 --port=6379 --temp-dir=/tmp/jc_ray_520 --memory=1825361100800 --object-store-memory=107374182400 --system-config={"memory_usage_threshold":0.85,"memory_monitor_refresh_ms":1000} --block
+jiefeng+  261976  3.2  0.0 2897092 1276832 ?     Sl   May01  44:12 /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --config_list=eyJtZW1vcnlfdXNhZ2VfdGhyZXNob2xkIjogMC44NSwgIm1lbW9yeV9tb25pdG9yX3JlZnJlc2hfbXMiOiAxMDAwLCAib2JqZWN0X3NwaWxsaW5nX2NvbmZpZyI6ICJ7XCJ0eXBlXCI6IFwiZmlsZXN5c3RlbVwiLCBcInBhcmFtc1wiOiB7XCJkaXJlY3RvcnlfcGF0aFwiOiBcIi90bXAvamNfcmF5XzUyMC9zZXNzaW9uXzIwMjYtMDUtMDFfMTItNTgtMTNfMTg0MDUxXzI2MTkwNVwifX0iLCAiaXNfZXh0ZXJuYWxfc3RvcmFnZV90eXBlX2ZzIjogdHJ1ZX0= --gcs_server_port=6379 --metrics-agent-port=48782 --node-ip-address=172.16.15.235 --session-name=session_2026-05-01_12-58-13_184051_261905 --ray-commit=0de211850589aea71f842873bc32574c702ab492 --stdout_filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/gcs_server.out --stderr_filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/gcs_server.err
+jiefeng+  262248  0.1  0.0 299736 79728 ?        Sl   May01   2:01 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/autoscaler/_private/monitor.py --logs-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --gcs-address=172.16.15.235:6379 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/monitor.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/monitor.err --monitor-ip=172.16.15.235
+jiefeng+  262249  0.1  0.0 389068 84672 ?        Sl   May01   2:08 /rmeng_data/envs/oas/bin/python3.11 -m ray.util.client.server --address=172.16.15.235:6379 --host=172.16.15.235 --port=10001 --mode=proxy --runtime-env-agent-address=http://172.16.15.235:49404
+jiefeng+  262250  0.9  0.0 481200 114636 ?       Sl   May01  12:55 /rmeng_data/envs/oas/bin/python3.11 /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/dashboard/dashboard.py --host=127.0.0.1 --port=8265 --port-retries=0 --temp-dir=/tmp/jc_ray_520 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --session-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905 --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --node-ip-address=172.16.15.235 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard.err
+jiefeng+  262363  0.0  0.0  32364 14976 ?        S    May01   0:00 /rmeng_data/envs/oas/bin/python3.11 -c from multiprocessing.resource_tracker import main;main(26)
+jiefeng+  262364  0.1  0.0 441152 99840 ?        Sl   May01   1:48 ray-dashboard-MetricsHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=29)" --multiprocessing-fork)
+jiefeng+  262365  0.1  0.0 440108 96512 ?        Sl   May01   1:50 ray-dashboard-DataHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=32)" --multiprocessing-fork)
+jiefeng+  262366  1.2  0.0 458660 114816 ?       Sl   May01  17:06 ray-dashboard-EventHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=35)" --multiprocessing-fork)
+jiefeng+  262367  0.1  0.0 441132 93184 ?        Sl   May01   1:52 ray-dashboard-JobHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=38)" --multiprocessing-fork)
+jiefeng+  262368  0.5  0.0 467856 115528 ?       Sl   May01   7:21 ray-dashboard-NodeHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=41)" --multiprocessing-fork)
+jiefeng+  262369  0.2  0.0 486832 101144 ?       Sl   May01   3:39 ray-dashboard-ReportHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=44)" --multiprocessing-fork)
+jiefeng+  262
+ ... [126 characters truncated] ... 
+-13_184051_261905 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.err --runtime_env_agent_command=/rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/_private/runtime_env/agent/main.py --node-ip-address=172.16.15.235 --runtime-env-agent-port=49404 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --runtime-env-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/runtime_resources --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --temp-dir=/tmp/jc_ray_520 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.err --node-name=172.16.15.235
+jiefeng+  262908  7.4  0.0 3834548 113456 ?      Sl   May01 101:48 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/dashboard/agent.py --node-ip-address=172.16.15.235 --metrics-export-port=42719 --grpc-port=48782 --listen-port=52365 --node-manager-port=36441 --object-store-name=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/sockets/plasma_store --raylet-name=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/sockets/raylet --temp-dir=/tmp/jc_ray_520 --session-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --session-name=session_2026-05-01_12-58-13_184051_261905 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.err
+jiefeng+  262910  0.0  0.0 1996068 76544 ?       Sl   May01   0:32 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/_private/runtime_env/agent/main.py --node-ip-address=172.16.15.235 --runtime-env-agent-port=49404 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --runtime-env-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/runtime_resources --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --temp-dir=/tmp/jc_ray_520 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.err
+jiefeng+  263118  0.4  0.0 111806584 354432 ?    Sl   May01   6:11 /rmeng_data/envs/oas/bin/python scripts/launcher/run_pipeline.py --config experiments/mle_bench/configs/IdeateThenFork_cairIdeator_deep_agent.yaml --task mle_bench.AI4Code
+jiefeng+ 1748567  0.0  0.3 123535712 6273920 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748571  0.0  0.3 123535724 6274144 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748576  0.0  0.3 123535736 6271864 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748579  0.0  0.3 123535748 6273808 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749595  0.0  0.3 127485928 6436028 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749600  0.0  0.3 127485940 6437172 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749603  0.0  0.3 127485952 6438836 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1842427  0.0  0.0 35688600 1538804 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842428  0.0  0.0 35688612 1538804 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842429  0.0  0.0 35688624 1538808 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842430  0.0  0.0 35688636 1538812 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 2531478 28.7  0.0 35498948 1925896 ?    RNl  11:36   0:24 python main.py
+jiefeng+ 2531794 32.8  0.0 35613820 1891728 ?    DNl  11:36   0:22 python main.py
+jiefeng+ 2531833 33.7  0.0 38253264 1771996 ?    DNl  11:36   0:23 python main.py
+jiefeng+ 2534244  2.1  0.0   4464  1664 ?        SN   11:38   0:00 /usr/bin/bash -c export CUDA_VISIBLE_DEVICES=0,1 && ps aux | grep python
+jiefeng+ 2534338  0.0  0.0 35496840 1351128 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534343  0.0  0.0   3536  1664 ?        SN   11:38   0:00 grep python
+jiefeng+ 2534344  0.0  0.0 35496852 1351128 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534345  0.0  0.0 35496864 1351132 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534346  0.0  0.0 35496876 1351132 ?    SN   11:38   0:00 python main.py
+
+2026-05-02 11:38:08,892 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #9] Sending request to model (step 9)...
+2026-05-02 11:38:08,892 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: 7f2fb790
+Status: completed
+Command: ps aux | grep python
+Duration: 2s
+
+Output:
+nobody      2643  0.0  0.0  33192 16640 ?        Ss   Apr27   0:00 /usr/bin/python3 /usr/bin/networkd-dispatcher --run-startup-triggers
+nobody      2939  0.0  0.0 110144 18304 ?        Ssl  Apr27   0:00 /usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal
+jiefeng+  261905  0.0  0.0 4431284 224640 ?      Sl   May01   1:15 /rmeng_data/envs/oas/bin/python3.11 /rmeng_data/envs/oas/bin/ray start --head --node-ip-address=172.16.15.235 --port=6379 --temp-dir=/tmp/jc_ray_520 --memory=1825361100800 --object-store-memory=107374182400 --system-config={"memory_usage_threshold":0.85,"memory_monitor_refresh_ms":1000} --block
+jiefeng+  261976  3.2  0.0 2897092 1276832 ?     Sl   May01  44:12 /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --config_list=eyJtZW1vcnlfdXNhZ2VfdGhyZXNob2xkIjogMC44NSwgIm1lbW9yeV9tb25pdG9yX3JlZnJlc2hfbXMiOiAxMDAwLCAib2JqZWN0X3NwaWxsaW5nX2NvbmZpZyI6ICJ7XCJ0eXBlXCI6IFwiZmlsZXN5c3RlbVwiLCBcInBhcmFtc1wiOiB7XCJkaXJlY3RvcnlfcGF0aFwiOiBcIi90bXAvamNfcmF5XzUyMC9zZXNzaW9uXzIwMjYtMDUtMDFfMTItNTgtMTNfMTg0MDUxXzI2MTkwNVwifX0iLCAiaXNfZXh0ZXJuYWxfc3RvcmFnZV90eXBlX2ZzIjogdHJ1ZX0= --gcs_server_port=6379 --metrics-agent-port=48782 --node-ip-address=172.16.15.235 --session-name=session_2026-05-01_12-58-13_184051_261905 --ray-commit=0de211850589aea71f842873bc32574c702ab492 --stdout_filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/gcs_server.out --stderr_filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/gcs_server.err
+jiefeng+  262248  0.1  0.0 299736 79728 ?        Sl   May01   2:01 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/autoscaler/_private/monitor.py --logs-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --gcs-address=172.16.15.235:6379 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/monitor.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/monitor.err --monitor-ip=172.16.15.235
+jiefeng+  262249  0.1  0.0 389068 84672 ?        Sl   May01   2:08 /rmeng_data/envs/oas/bin/python3.11 -m ray.util.client.server --address=172.16.15.235:6379 --host=172.16.15.235 --port=10001 --mode=proxy --runtime-env-agent-address=http://172.16.15.235:49404
+jiefeng+  262250  0.9  0.0 481200 114636 ?       Sl   May01  12:55 /rmeng_data/envs/oas/bin/python3.11 /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/dashboard/dashboard.py --host=127.0.0.1 --port=8265 --port-retries=0 --temp-dir=/tmp/jc_ray_520 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --session-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905 --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --node-ip-address=172.16.15.235 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard.err
+jiefeng+  262363  0.0  0.0  32364 14976 ?        S    May01   0:00 /rmeng_data/envs/oas/bin/python3.11 -c from multiprocessing.resource_tracker import main;main(26)
+jiefeng+  262364  0.1  0.0 441152 99840 ?        Sl   May01   1:48 ray-dashboard-MetricsHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=29)" --multiprocessing-fork)
+jiefeng+  262365  0.1  0.0 440108 96512 ?        Sl   May01   1:50 ray-dashboard-DataHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=32)" --multiprocessing-fork)
+jiefeng+  262366  1.2  0.0 458660 114816 ?       Sl   May01  17:06 ray-dashboard-EventHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=35)" --multiprocessing-fork)
+jiefeng+  262367  0.1  0.0 441132 93184 ?        Sl   May01   1:52 ray-dashboard-JobHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=38)" --multiprocessing-fork)
+jiefeng+  262368  0.5  0.0 467856 115528 ?       Sl   May01   7:21 ray-dashboard-NodeHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=41)" --multiprocessing-fork)
+jiefeng+  262369  0.2  0.0 486832 101144 ?       Sl   May01   3:39 ray-dashboard-ReportHead-0 (/rmeng_data/envs/oas/bin/python3.11 -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=44)" --multiprocessing-fork)
+ ... [140 characters truncated] ... 
+-13_184051_261905 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.err --runtime_env_agent_command=/rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/_private/runtime_env/agent/main.py --node-ip-address=172.16.15.235 --runtime-env-agent-port=49404 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --runtime-env-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/runtime_resources --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --temp-dir=/tmp/jc_ray_520 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.err --node-name=172.16.15.235
+jiefeng+  262908  7.4  0.0 3834548 113456 ?      Sl   May01 101:48 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/dashboard/agent.py --node-ip-address=172.16.15.235 --metrics-export-port=42719 --grpc-port=48782 --listen-port=52365 --node-manager-port=36441 --object-store-name=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/sockets/plasma_store --raylet-name=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/sockets/raylet --temp-dir=/tmp/jc_ray_520 --session-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --session-name=session_2026-05-01_12-58-13_184051_261905 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/dashboard_agent.err
+jiefeng+  262910  0.0  0.0 1996068 76544 ?       Sl   May01   0:32 /rmeng_data/envs/oas/bin/python3.11 -u /rmeng_data/envs/oas/lib/python3.11/site-packages/ray/_private/runtime_env/agent/main.py --node-ip-address=172.16.15.235 --runtime-env-agent-port=49404 --gcs-address=172.16.15.235:6379 --cluster-id-hex=bb9001c99fc1fcdc41c4dc4778efb3d278a4bc5e1023900d7d2dc68b --runtime-env-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/runtime_resources --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --log-dir=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs --temp-dir=/tmp/jc_ray_520 --stdout-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.out --stderr-filepath=/tmp/jc_ray_520/session_2026-05-01_12-58-13_184051_261905/logs/runtime_env_agent.err
+jiefeng+  263118  0.4  0.0 111806584 354432 ?    Sl   May01   6:11 /rmeng_data/envs/oas/bin/python scripts/launcher/run_pipeline.py --config experiments/mle_bench/configs/IdeateThenFork_cairIdeator_deep_agent.yaml --task mle_bench.AI4Code
+jiefeng+ 1748567  0.0  0.3 123535712 6273920 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748571  0.0  0.3 123535724 6274144 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748576  0.0  0.3 123535736 6271864 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1748579  0.0  0.3 123535748 6273808 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749595  0.0  0.3 127485928 6436028 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749600  0.0  0.3 127485940 6437172 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1749603  0.0  0.3 127485952 6438836 ?   SNl  May01   0:13 python main.py
+jiefeng+ 1842427  0.0  0.0 35688600 1538804 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842428  0.0  0.0 35688612 1538804 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842429  0.0  0.0 35688624 1538808 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 1842430  0.0  0.0 35688636 1538812 ?    SNl  01:08   0:00 python main.py
+jiefeng+ 2531478 28.7  0.0 35498948 1925896 ?    RNl  11:36   0:24 python main.py
+jiefeng+ 2531794 32.8  0.0 35613820 1891728 ?    DNl  11:36   0:22 python main.py
+jiefeng+ 2531833 33.7  0.0 38253264 1771996 ?    DNl  11:36   0:23 python main.py
+jiefeng+ 2534244  2.1  0.0   4464  1664 ?        SN   11:38   0:00 /usr/bin/bash -c export CUDA_VISIBLE_DEVICES=0,1 && ps aux | grep python
+jiefeng+ 2534338  0.0  0.0 35496840 1351128 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534343  0.0  0.0   3536  1664 ?        SN   11:38   0:00 grep python
+jiefeng+ 2534344  0.0  0.0 35496852 1351128 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534345  0.0  0.0 35496864 1351132 ?    SN   11:38   0:00 python main.py
+jiefeng+ 2534346  0.0  0.0 35496876 1351132 ?    SN   11:38   0:00 python main.py
+
+2026-05-02 11:38:22,138 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py', 'gpu_ids': '1'})
+2026-05-02 11:38:22,138 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=24579 response_tokens=1272 total=25851
+2026-05-02 11:38:22,139 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py', 'gpu_ids': '1'}
+2026-05-02 11:38:22,139 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: c0bd98d4
+Use get_job_status('c0bd98d4') to check progress and retrieve output when completed.
+2026-05-02 11:38:22,140 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #10] Sending request to model (step 10)...
+2026-05-02 11:38:22,148 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: c0bd98d4
+Use get_job_status('c0bd98d4') to check progress and retrieve output when completed.
+2026-05-02 11:38:22,456 - one_ais.core.api_key_manager - WARNING - HTTP 429; retry 1/20 in 2.0s: POST https://aiplatform.googleapis.com/v1beta1/projects/sercan-v1/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent
+2026-05-02 11:38:27,257 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': 'c0bd98d4'})
+2026-05-02 11:38:27,257 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=24716 response_tokens=26 total=24742
+2026-05-02 11:38:27,258 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': 'c0bd98d4'}
+2026-05-02 11:40:59,711 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: c0bd98d4
+Status: completed
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 158s
+
+Output:
+
+STDERR:
+2026-05-02 11:38:35.515614: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:38:36.703706: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:38:38.385428: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 91/50000 [00:00<00:54, 908.72it/s]
+Preparing pairs:   0%|          | 182/50000 [00:00<00:55, 898.00it/s]
+Preparing pairs:   1%|          | 279/50000 [00:00<00:53, 927.64it/s]
+Preparing pairs:   1%|          | 373/50000 [00:00<00:53, 929.76it/s]
+Preparing pairs:   1%|          | 472/50000 [00:00<00:52, 950.04it/s]
+Preparing pairs:   1%|          | 569/50000 [00:00<00:51, 956.37it/s]
+Preparing pairs:   1%|▏         | 667/50000 [00:00<00:51, 961.32it/s]
+Preparing pairs:   2%|▏         | 764/50000 [00:00<00:51, 963.57it/s]
+Preparing pairs:   2%|▏         | 861/50000 [00:00<00:51, 961.08it/s]
+Preparing pairs:   2%|▏         | 958/50000 [00:01<00:51, 952.29it/s]
+Preparing pairs:   2%|▏         | 1054/50000 [00:01<00:51, 949.28it/s]
+Preparing pairs:   2%|▏         | 1149/50000 [00:01<00:51, 946.28it/s]
+Preparing pairs:   2%|▏         | 1247/50000 [00:01<00:50, 956.24it/s]
+Preparing pairs:   3%|▎         | 1344/50000 [00:01<00:50, 959.07it/s]
+Preparing pairs:   3%|▎         | 1442/50000 [00:01<00:50, 964.34it/s]
+Preparing pairs:   3%|▎         | 1540/50000 [00:01<00:50, 968.89it/s]
+Preparing pairs:   3%|▎         | 1637/50000 [00:01<00:49, 968.89it/s]
+Preparing pairs:   3%|▎         | 1735/50000 [00:01<00:49, 969.20it/s]
+Preparing pairs:   4%|▎         | 1833/50000 [00:01<00:49, 971.04it/s]
+Preparing pairs:   4%|▍         | 1931/50000 [00:02<00:49, 972.11it/s]
+Preparing pairs:   4%|▍         | 2029/50000 [00:02<00:49, 971.26it/s]
+Preparing pairs:   4%|▍         | 2128/50000 [00:02<00:49, 975.54it/s]
+Preparing pairs:   4%|▍         | 2227/50000 [00:02<00:48, 977.86it/s]
+Preparing pairs:   5%|▍         | 2327/50000 [00:02<00:48, 983.85it/s]
+Preparing pairs:   5%|▍         | 2426/50000 [00:02<00:48, 983.84it/s]
+Preparing pairs:   5%|▌         | 2525/50000 [00:02<00:48, 977.21it/s]
+Preparing pairs:   5%|▌         | 2623/50000 [00:02<00:48, 976.12it/s]
+Preparing pairs:   5%|▌         | 2721/50000 [00:02<00:48, 970.33it/s]
+Preparing pairs:   6%|▌         | 2819/50000 [00:02<00:48, 971.63it/s]
+Preparing pairs:   6%|▌         | 2918/50000 [00:03<00:48, 975.12it/s]
+Preparing pairs:   6%|▌         | 3018/50000 [00:03<00:47, 979.69it/s]
+Preparing pairs:   6%|▌         | 3116/50000 [00:03<00:48, 976.69it/s]
+Preparing pairs:   6%|▋         | 3214/50000 [00:03<00:48, 972.10it/s]
+Preparing pairs:   7%|▋         | 3312/50000 [00:03<00:48, 969.11it/s]
+Preparing pairs:   7%|▋         | 3409/50000 [00:03<00:49, 949.78it/s]
+Preparing pairs:   7%|▋         | 3505/50000 [00:03<00:49, 946.66it/s]
+Preparing pairs:   7%|▋         | 3604/50000 [00:03<00:48, 957.51it/s]
+Preparing pairs:   7%|▋         | 3701/50000 [00:03<00:48, 960.44it/s]
+Preparing pairs:   8%|▊         | 3800/50000 [00:03<00:47, 967.32it/s]
+Preparing pairs:   8%|▊         | 3899/50000 [00:04<00:47, 972.68it/s]
+Preparing pairs:   8%|▊         | 3998/50000 [00:04<00:47, 977.19it/s]
+Preparing pairs:   8%|▊         | 4097/50000 [00:04<00:46, 978.92it/s]
+Preparing pairs:   8%|▊         | 4196/50000 [00:04<00:46, 979.27it/s]
+Preparing pairs:   9%|▊         | 4297/50000 [00:04<00:46, 985.63it/s]
+Preparing pairs:   9%|▉         | 4396/50000 [00:04<00:46, 986.67it/s]
+Preparing pairs:   9%|▉         | 4495/50000 [00:04<00:46, 986.29it/s]
+Preparing pairs:   9%|▉         | 4594/50000 [00:04<00:46, 985.62it/s]
+Preparing pairs:   9%|▉         | 4694/50000 [00:04<00:45, 987.22it/s]
+Preparing pairs:  10%|▉         | 4794/50000 [00:04<00:45, 990.84it/s]
+Preparing pairs:  10%|▉         | 4894/50000 [00:05<00:46, 966.15it/s]
+Preparing pairs:  10%|▉         | 4991/50000 [00:05<00:46, 965.30it/s]
+Preparing pairs:  10%|█         | 5089/50000 [00:05<00:46, 969.42it/s]
+Preparing pairs:  10%|█         | 5188/50000 [00:05<00:46, 973.66it/s]
+Preparing pairs:  11%|█         | 5286/50000 [00:05<00:46, 970.84it/s]
+Preparing pairs:  11%|█         | 5385/50000 [00:05<00:45, 974.24it/s]
+Preparing pairs:  11%|█         | 5483/50000 [00:05<00:
+ ... [212 characters truncated] ... 
+ 1.67it/s, loss=3.7]
+Epoch 1:   3%|▎         | 103/3062 [01:04<29:28,  1.67it/s, loss=3.76]
+Epoch 1:   3%|▎         | 104/3062 [01:04<29:25,  1.68it/s, loss=3.76]
+Epoch 1:   3%|▎         | 104/3062 [01:04<29:25,  1.68it/s, loss=3.61]
+Epoch 1:   3%|▎         | 105/3062 [01:04<29:24,  1.68it/s, loss=3.61]
+Epoch 1:   3%|▎         | 105/3062 [01:05<29:24,  1.68it/s, loss=3.82]
+Epoch 1:   3%|▎         | 106/3062 [01:05<29:23,  1.68it/s, loss=3.82]
+Epoch 1:   3%|▎         | 106/3062 [01:05<29:23,  1.68it/s, loss=3.56]
+Epoch 1:   3%|▎         | 107/3062 [01:05<29:23,  1.68it/s, loss=3.56]
+Epoch 1:   3%|▎         | 107/3062 [01:06<29:23,  1.68it/s, loss=3.89]
+Epoch 1:   4%|▎         | 108/3062 [01:06<29:22,  1.68it/s, loss=3.89]
+Epoch 1:   4%|▎         | 108/3062 [01:07<29:22,  1.68it/s, loss=3.48]
+Epoch 1:   4%|▎         | 109/3062 [01:07<29:21,  1.68it/s, loss=3.48]
+Epoch 1:   4%|▎         | 109/3062 [01:07<29:21,  1.68it/s, loss=3.39]
+Epoch 1:   4%|▎         | 110/3062 [01:07<29:19,  1.68it/s, loss=3.39]
+Epoch 1:   4%|▎         | 110/3062 [01:08<29:19,  1.68it/s, loss=3.69]
+Epoch 1:   4%|▎         | 111/3062 [01:08<29:18,  1.68it/s, loss=3.69]
+Epoch 1:   4%|▎         | 111/3062 [01:08<29:18,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 112/3062 [01:08<29:18,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 112/3062 [01:09<29:18,  1.68it/s, loss=3.62]
+Epoch 1:   4%|▎         | 113/3062 [01:09<29:17,  1.68it/s, loss=3.62]
+Epoch 1:   4%|▎         | 113/3062 [01:10<29:17,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 114/3062 [01:10<29:16,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 114/3062 [01:10<29:16,  1.68it/s, loss=3.9] 
+Epoch 1:   4%|▍         | 115/3062 [01:10<29:15,  1.68it/s, loss=3.9]
+Epoch 1:   4%|▍         | 115/3062 [01:11<29:15,  1.68it/s, loss=3.68]
+Epoch 1:   4%|▍         | 116/3062 [01:11<29:16,  1.68it/s, loss=3.68]
+Epoch 1:   4%|▍         | 116/3062 [01:11<29:16,  1.68it/s, loss=3.7] 
+Epoch 1:   4%|▍         | 117/3062 [01:11<29:15,  1.68it/s, loss=3.7]
+Epoch 1:   4%|▍         | 117/3062 [01:12<29:15,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 118/3062 [01:12<29:14,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 118/3062 [01:13<29:14,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 119/3062 [01:13<29:14,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 119/3062 [01:13<29:14,  1.68it/s, loss=3.55]
+Epoch 1:   4%|▍         | 120/3062 [01:13<29:14,  1.68it/s, loss=3.55]
+Epoch 1:   4%|▍         | 120/3062 [01:14<29:14,  1.68it/s, loss=3.57]
+Epoch 1:   4%|▍         | 121/3062 [01:14<29:13,  1.68it/s, loss=3.57]
+Epoch 1:   4%|▍         | 121/3062 [01:14<29:13,  1.68it/s, loss=3.51]
+Epoch 1:   4%|▍         | 122/3062 [01:14<29:12,  1.68it/s, loss=3.51]
+Epoch 1:   4%|▍         | 122/3062 [01:15<29:12,  1.68it/s, loss=3.66]
+Epoch 1:   4%|▍         | 123/3062 [01:15<29:12,  1.68it/s, loss=3.66]
+Epoch 1:   4%|▍         | 123/3062 [01:16<29:12,  1.68it/s, loss=3.44]
+Epoch 1:   4%|▍         | 124/3062 [01:16<29:13,  1.68it/s, loss=3.44]
+Epoch 1:   4%|▍         | 124/3062 [01:16<29:13,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 125/3062 [01:16<29:13,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 125/3062 [01:17<29:13,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 126/3062 [01:17<29:11,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 126/3062 [01:17<29:11,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 127/3062 [01:17<29:10,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 127/3062 [01:18<29:10,  1.68it/s, loss=3.76]
+Epoch 1:   4%|▍         | 128/3062 [01:18<29:11,  1.68it/s, loss=3.76]
+Epoch 1:   4%|▍         | 128/3062 [01:19<29:11,  1.68it/s, loss=3.7] 
+Epoch 1:   4%|▍         | 129/3062 [01:19<29:10,  1.68it/s, loss=3.7]
+Epoch 1:   4%|▍         | 129/3062 [01:19<29:10,  1.68it/s, loss=3.64]
+Epoch 1:   4%|▍         | 130/3062 [01:19<29:09,  1.68it/s, loss=3.64]
+Epoch 1:   4%|▍         | 130/3062 [01:20<29:09,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 131/3062 [01:20<29:08,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 131/3062 [01:20<29:08,  1.68it/s, loss=3.67]
+Epoch 1:   4%|▍         | 132/3062 [01:20<29:06,  1.68it/s, loss=3.67]
+Epoch 1:   4%|▍         | 132/3062 [01:21<29:06,  1.68it/s, loss=3.47]
+Epoch 1:   4%|▍         | 133/3062 [01:21<29:05,  1.68it/s, loss=3.47]
+Epoch 1:   4%|▍         | 133/3062 [01:21<29:05,  1.68it/s, loss=3.58]
+Epoch 1:   4%|▍         | 134/3062 [01:21<29:06,  1.68it/s, loss=3.58]
+Epoch 1:   4%|▍         | 134/3062 [01:22<29:06,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 135/3062 [01:22<29:05,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 135/3062 [01:23<29:05,  1.68it/s, loss=3.59]
+Epoch 1:   4%|▍         | 136/3062 [01:23<29:05,  1.68it/s, loss=3.59]
+Epoch 1:   4%|▍         | 136/3062 [01:23<29:05,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 137/3062 [01:23<29:03,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 137/3062 [01:24<29:03,  1.68it/s, loss=3.73]
+Epoch 1:   5%|▍         | 138/3062 [01:24<29:03,  1.68it/s, loss=3.73]
+[Exit code: -9]
+2026-05-02 11:40:59,714 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #11] Sending request to model (step 11)...
+2026-05-02 11:40:59,714 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: c0bd98d4
+Status: completed
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 158s
+
+Output:
+
+STDERR:
+2026-05-02 11:38:35.515614: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:38:36.703706: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:38:38.385428: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 91/50000 [00:00<00:54, 908.72it/s]
+Preparing pairs:   0%|          | 182/50000 [00:00<00:55, 898.00it/s]
+Preparing pairs:   1%|          | 279/50000 [00:00<00:53, 927.64it/s]
+Preparing pairs:   1%|          | 373/50000 [00:00<00:53, 929.76it/s]
+Preparing pairs:   1%|          | 472/50000 [00:00<00:52, 950.04it/s]
+Preparing pairs:   1%|          | 569/50000 [00:00<00:51, 956.37it/s]
+Preparing pairs:   1%|▏         | 667/50000 [00:00<00:51, 961.32it/s]
+Preparing pairs:   2%|▏         | 764/50000 [00:00<00:51, 963.57it/s]
+Preparing pairs:   2%|▏         | 861/50000 [00:00<00:51, 961.08it/s]
+Preparing pairs:   2%|▏         | 958/50000 [00:01<00:51, 952.29it/s]
+Preparing pairs:   2%|▏         | 1054/50000 [00:01<00:51, 949.28it/s]
+Preparing pairs:   2%|▏         | 1149/50000 [00:01<00:51, 946.28it/s]
+Preparing pairs:   2%|▏         | 1247/50000 [00:01<00:50, 956.24it/s]
+Preparing pairs:   3%|▎         | 1344/50000 [00:01<00:50, 959.07it/s]
+Preparing pairs:   3%|▎         | 1442/50000 [00:01<00:50, 964.34it/s]
+Preparing pairs:   3%|▎         | 1540/50000 [00:01<00:50, 968.89it/s]
+Preparing pairs:   3%|▎         | 1637/50000 [00:01<00:49, 968.89it/s]
+Preparing pairs:   3%|▎         | 1735/50000 [00:01<00:49, 969.20it/s]
+Preparing pairs:   4%|▎         | 1833/50000 [00:01<00:49, 971.04it/s]
+Preparing pairs:   4%|▍         | 1931/50000 [00:02<00:49, 972.11it/s]
+Preparing pairs:   4%|▍         | 2029/50000 [00:02<00:49, 971.26it/s]
+Preparing pairs:   4%|▍         | 2128/50000 [00:02<00:49, 975.54it/s]
+Preparing pairs:   4%|▍         | 2227/50000 [00:02<00:48, 977.86it/s]
+Preparing pairs:   5%|▍         | 2327/50000 [00:02<00:48, 983.85it/s]
+Preparing pairs:   5%|▍         | 2426/50000 [00:02<00:48, 983.84it/s]
+Preparing pairs:   5%|▌         | 2525/50000 [00:02<00:48, 977.21it/s]
+Preparing pairs:   5%|▌         | 2623/50000 [00:02<00:48, 976.12it/s]
+Preparing pairs:   5%|▌         | 2721/50000 [00:02<00:48, 970.33it/s]
+Preparing pairs:   6%|▌         | 2819/50000 [00:02<00:48, 971.63it/s]
+Preparing pairs:   6%|▌         | 2918/50000 [00:03<00:48, 975.12it/s]
+Preparing pairs:   6%|▌         | 3018/50000 [00:03<00:47, 979.69it/s]
+Preparing pairs:   6%|▌         | 3116/50000 [00:03<00:48, 976.69it/s]
+Preparing pairs:   6%|▋         | 3214/50000 [00:03<00:48, 972.10it/s]
+Preparing pairs:   7%|▋         | 3312/50000 [00:03<00:48, 969.11it/s]
+Preparing pairs:   7%|▋         | 3409/50000 [00:03<00:49, 949.78it/s]
+Preparing pairs:   7%|▋         | 3505/50000 [00:03<00:49, 946.66it/s]
+Preparing pairs:   7%|▋         | 3604/50000 [00:03<00:48, 957.51it/s]
+Preparing pairs:   7%|▋         | 3701/50000 [00:03<00:48, 960.44it/s]
+Preparing pairs:   8%|▊         | 3800/50000 [00:03<00:47, 967.32it/s]
+Preparing pairs:   8%|▊         | 3899/50000 [00:04<00:47, 972.68it/s]
+Preparing pairs:   8%|▊         | 3998/50000 [00:04<00:47, 977.19it/s]
+Preparing pairs:   8%|▊         | 4097/50000 [00:04<00:46, 978.92it/s]
+Preparing pairs:   8%|▊         | 4196/50000 [00:04<00:46, 979.27it/s]
+Preparing pairs:   9%|▊         | 4297/50000 [00:04<00:46, 985.63it/s]
+Preparing pairs:   9%|▉         | 4396/50000 [00:04<00:46, 986.67it/s]
+Preparing pairs:   9%|▉         | 4495/50000 [00:04<00:46, 986.29it/s]
+Preparing pairs:   9%|▉         | 4594/50000 [00:04<00:46, 985.62it/s]
+Preparing pairs:   9%|▉         | 4694/50000 [00:04<00:45, 987.22it/s]
+Preparing pairs:  10%|▉         | 4794/50000 [00:04<00:45, 990.84it/s]
+Preparing pairs:  10%|▉         | 4894/50000 [00:05<00:46, 966.15it/s]
+Preparing pairs:  10%|▉         | 4991/50000 [00:05<00:46, 965.30it/s]
+Preparing pairs:  10%|█         | 5089/50000 [00:05<00:46, 969.42it/s]
+Preparing pairs:  10%|█         | 5188/50000 [00:05<00:46, 973.66it/s]
+Preparing pairs:  11%|█         | 5286/50000 [00:05<00:46, 970.84it/s]
+Preparing pairs:  11%|█         | 5385/50000 [00:05<00:45, 974.24it/s]
+Preparing pairs:  11%|█         | 5483/50
+ ... [226 characters truncated] ... 
+ 1.67it/s, loss=3.7]
+Epoch 1:   3%|▎         | 103/3062 [01:04<29:28,  1.67it/s, loss=3.76]
+Epoch 1:   3%|▎         | 104/3062 [01:04<29:25,  1.68it/s, loss=3.76]
+Epoch 1:   3%|▎         | 104/3062 [01:04<29:25,  1.68it/s, loss=3.61]
+Epoch 1:   3%|▎         | 105/3062 [01:04<29:24,  1.68it/s, loss=3.61]
+Epoch 1:   3%|▎         | 105/3062 [01:05<29:24,  1.68it/s, loss=3.82]
+Epoch 1:   3%|▎         | 106/3062 [01:05<29:23,  1.68it/s, loss=3.82]
+Epoch 1:   3%|▎         | 106/3062 [01:05<29:23,  1.68it/s, loss=3.56]
+Epoch 1:   3%|▎         | 107/3062 [01:05<29:23,  1.68it/s, loss=3.56]
+Epoch 1:   3%|▎         | 107/3062 [01:06<29:23,  1.68it/s, loss=3.89]
+Epoch 1:   4%|▎         | 108/3062 [01:06<29:22,  1.68it/s, loss=3.89]
+Epoch 1:   4%|▎         | 108/3062 [01:07<29:22,  1.68it/s, loss=3.48]
+Epoch 1:   4%|▎         | 109/3062 [01:07<29:21,  1.68it/s, loss=3.48]
+Epoch 1:   4%|▎         | 109/3062 [01:07<29:21,  1.68it/s, loss=3.39]
+Epoch 1:   4%|▎         | 110/3062 [01:07<29:19,  1.68it/s, loss=3.39]
+Epoch 1:   4%|▎         | 110/3062 [01:08<29:19,  1.68it/s, loss=3.69]
+Epoch 1:   4%|▎         | 111/3062 [01:08<29:18,  1.68it/s, loss=3.69]
+Epoch 1:   4%|▎         | 111/3062 [01:08<29:18,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 112/3062 [01:08<29:18,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 112/3062 [01:09<29:18,  1.68it/s, loss=3.62]
+Epoch 1:   4%|▎         | 113/3062 [01:09<29:17,  1.68it/s, loss=3.62]
+Epoch 1:   4%|▎         | 113/3062 [01:10<29:17,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 114/3062 [01:10<29:16,  1.68it/s, loss=3.56]
+Epoch 1:   4%|▎         | 114/3062 [01:10<29:16,  1.68it/s, loss=3.9] 
+Epoch 1:   4%|▍         | 115/3062 [01:10<29:15,  1.68it/s, loss=3.9]
+Epoch 1:   4%|▍         | 115/3062 [01:11<29:15,  1.68it/s, loss=3.68]
+Epoch 1:   4%|▍         | 116/3062 [01:11<29:16,  1.68it/s, loss=3.68]
+Epoch 1:   4%|▍         | 116/3062 [01:11<29:16,  1.68it/s, loss=3.7] 
+Epoch 1:   4%|▍         | 117/3062 [01:11<29:15,  1.68it/s, loss=3.7]
+Epoch 1:   4%|▍         | 117/3062 [01:12<29:15,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 118/3062 [01:12<29:14,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 118/3062 [01:13<29:14,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 119/3062 [01:13<29:14,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 119/3062 [01:13<29:14,  1.68it/s, loss=3.55]
+Epoch 1:   4%|▍         | 120/3062 [01:13<29:14,  1.68it/s, loss=3.55]
+Epoch 1:   4%|▍         | 120/3062 [01:14<29:14,  1.68it/s, loss=3.57]
+Epoch 1:   4%|▍         | 121/3062 [01:14<29:13,  1.68it/s, loss=3.57]
+Epoch 1:   4%|▍         | 121/3062 [01:14<29:13,  1.68it/s, loss=3.51]
+Epoch 1:   4%|▍         | 122/3062 [01:14<29:12,  1.68it/s, loss=3.51]
+Epoch 1:   4%|▍         | 122/3062 [01:15<29:12,  1.68it/s, loss=3.66]
+Epoch 1:   4%|▍         | 123/3062 [01:15<29:12,  1.68it/s, loss=3.66]
+Epoch 1:   4%|▍         | 123/3062 [01:16<29:12,  1.68it/s, loss=3.44]
+Epoch 1:   4%|▍         | 124/3062 [01:16<29:13,  1.68it/s, loss=3.44]
+Epoch 1:   4%|▍         | 124/3062 [01:16<29:13,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 125/3062 [01:16<29:13,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 125/3062 [01:17<29:13,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 126/3062 [01:17<29:11,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 126/3062 [01:17<29:11,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 127/3062 [01:17<29:10,  1.68it/s, loss=3.61]
+Epoch 1:   4%|▍         | 127/3062 [01:18<29:10,  1.68it/s, loss=3.76]
+Epoch 1:   4%|▍         | 128/3062 [01:18<29:11,  1.68it/s, loss=3.76]
+Epoch 1:   4%|▍         | 128/3062 [01:19<29:11,  1.68it/s, loss=3.7] 
+Epoch 1:   4%|▍         | 129/3062 [01:19<29:10,  1.68it/s, loss=3.7]
+Epoch 1:   4%|▍         | 129/3062 [01:19<29:10,  1.68it/s, loss=3.64]
+Epoch 1:   4%|▍         | 130/3062 [01:19<29:09,  1.68it/s, loss=3.64]
+Epoch 1:   4%|▍         | 130/3062 [01:20<29:09,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 131/3062 [01:20<29:08,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 131/3062 [01:20<29:08,  1.68it/s, loss=3.67]
+Epoch 1:   4%|▍         | 132/3062 [01:20<29:06,  1.68it/s, loss=3.67]
+Epoch 1:   4%|▍         | 132/3062 [01:21<29:06,  1.68it/s, loss=3.47]
+Epoch 1:   4%|▍         | 133/3062 [01:21<29:05,  1.68it/s, loss=3.47]
+Epoch 1:   4%|▍         | 133/3062 [01:21<29:05,  1.68it/s, loss=3.58]
+Epoch 1:   4%|▍         | 134/3062 [01:21<29:06,  1.68it/s, loss=3.58]
+Epoch 1:   4%|▍         | 134/3062 [01:22<29:06,  1.68it/s, loss=3.6] 
+Epoch 1:   4%|▍         | 135/3062 [01:22<29:05,  1.68it/s, loss=3.6]
+Epoch 1:   4%|▍         | 135/3062 [01:23<29:05,  1.68it/s, loss=3.59]
+Epoch 1:   4%|▍         | 136/3062 [01:23<29:05,  1.68it/s, loss=3.59]
+Epoch 1:   4%|▍         | 136/3062 [01:23<29:05,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 137/3062 [01:23<29:03,  1.68it/s, loss=3.42]
+Epoch 1:   4%|▍         | 137/3062 [01:24<29:03,  1.68it/s, loss=3.73]
+Epoch 1:   5%|▍         | 138/3062 [01:24<29:03,  1.68it/s, loss=3.73]
+[Exit code: -9]
+2026-05-02 11:41:12,388 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'command': 'cat /sys/fs/cgroup/memory.max || cat /sys/fs/cgroup/memory/memory.limit_in_bytes'})
+2026-05-02 11:41:12,388 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=31364 response_tokens=1292 total=32656
+2026-05-02 11:41:12,389 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': 'cat /sys/fs/cgroup/memory.max || cat /sys/fs/cgroup/memory/memory.limit_in_bytes', 'gpu_ids': ''}
+2026-05-02 11:41:12,389 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: f75709a6
+Use get_job_status('f75709a6') to check progress and retrieve output when completed.
+2026-05-02 11:41:12,391 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #12] Sending request to model (step 12)...
+2026-05-02 11:41:12,396 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: f75709a6
+Use get_job_status('f75709a6') to check progress and retrieve output when completed.
+2026-05-02 11:41:15,617 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': 'f75709a6'})
+2026-05-02 11:41:15,617 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=31515 response_tokens=28 total=31543
+2026-05-02 11:41:15,618 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': 'f75709a6'}
+2026-05-02 11:41:21,959 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: f75709a6
+Status: completed
+Command: cat /sys/fs/cgroup/memory.max || cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+Duration: 10s
+
+Output:
+9223372036854771712
+
+STDERR:
+cat: /sys/fs/cgroup/memory.max: No such file or directory
+
+2026-05-02 11:41:21,962 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #13] Sending request to model (step 13)...
+2026-05-02 11:41:21,962 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: f75709a6
+Status: completed
+Command: cat /sys/fs/cgroup/memory.max || cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+Duration: 10s
+
+Output:
+9223372036854771712
+
+STDERR:
+cat: /sys/fs/cgroup/memory.max: No such file or directory
+
+2026-05-02 11:41:32,179 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] hashline_edit({'path': 'ablations/1_remove_margin_ranking_loss/main.py', 'end_line': 126, 'start_line': 126, 'new_content': '    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=0)', 'start_hash': 'c0', 'end_hash': '03'})
+2026-05-02 11:41:32,179 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=31680 response_tokens=1021 total=32701
+2026-05-02 11:41:32,180 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] hashline_edit | args: {'path': 'ablations/1_remove_margin_ranking_loss/main.py', 'start_line': 126, 'start_hash': 'c0', 'new_content': '    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=0)', 'end_line': 126, 'end_hash': '03', 'insert_after': False}
+2026-05-02 11:41:32,184 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] hashline_edit | result: Error: Hash mismatch at line 126: expected 'c0', got 'b8'. File may have changed — re-read it first.
+2026-05-02 11:41:32,185 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #14] Sending request to model (step 14)...
+2026-05-02 11:41:32,185 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Error: Hash mismatch at line 126: expected 'c0', got 'b8'. File may have changed — re-read it first.
+2026-05-02 11:41:35,491 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 0, 'limit': 2000, 'path': 'ablations/1_remove_margin_ranking_loss/main.py'})
+2026-05-02 11:41:35,491 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=31851 response_tokens=39 total=31890
+2026-05-02 11:41:35,491 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'ablations/1_remove_margin_ranking_loss/main.py', 'offset': 0, 'limit': 2000}
+2026-05-02 11:41:35,494 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 1:ed|import os
+2:39|import json
+3:e2|import torch
+4:21|import numpy as np
+5:c1|import pandas as pd
+6:18|from tqdm import tqdm
+7:a1|from transformers import AutoTokenizer, AutoModel
+8:34|import torch.nn as nn
+9:30|import torch.nn.functional as F
+10:24|from torch.utils.data import Dataset, DataLoader
+11:47|from bisect import bisect
+12:fa|from scipy.optimize import linear_sum_assignment
+13:f6|import pathlib
+14:d4|
+15:4a|def count_inversions(a):
+16:fc|    inversions = 0
+17:7a|    sorted_so_far = []
+18:50|    for i, u in enumerate(a):
+19:09|        j = bisect(sorted_so_far, u)
+20:f9|        inversions += i - j
+21:cd|        sorted_so_far.insert(j, u)
+22:2e|    return inversions
+23:d4|
+24:21|def kendall_tau(ground_truth, predictions):
+25:4e|    total_inversions = 0
+26:71|    total_2max = 0
+27:cd|    for gt, pred in zip(ground_truth, predictions):
+28:e0|        ranks = {cell_id: i for i, cell_id in enumerate(gt)}
+29:e9|        pred_ranks = [ranks[x] for x in pred if x in ranks]
+30:de|        n = len(gt)
+31:63|        total_2max += n * (n - 1)
+32:d8|        total_inversions += count_inversions(pred_ranks)
+33:0d|    return 1 - 4 * total_inversions / total_2max
+34:d4|
+35:6e|class DualEncoder(nn.Module):
+36:76|    def __init__(self, model_name='microsoft/codebert-base'):
+37:58|        super().__init__()
+38:68|        self.encoder = AutoModel.from_pretrained(model_name)
+39:04|        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+40:7b|        
+41:e7|    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):
+42:ef|        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]
+43:dc|        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+44:7b|        
+45:30|        md_feat = F.normalize(md_feat, p=2, dim=-1)
+46:e3|        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)
+47:7b|        
+48:49|        return md_feat, bnd_feat
+49:d4|
+50:d6|    def encode_text(self, input_ids, attention_mask):
+51:85|        feat = self.encoder(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]
+52:ff|        return F.normalize(feat, p=2, dim=-1)
+53:d4|
+54:ac|def get_boundaries(nb_id, cell_types, source, max_len=512):
+55:c3|    code_cells = [c for c, t in cell_types.items() if t == 'code']
+56:d9|    code_count = len(code_cells)
+57:0c|    
+58:0b|    boundaries = []
+59:33|    # boundary 0: before first code cell
+60:73|    # boundary k: between code cell k-1 and k
+61:77|    # boundary C: after last code cell
+62:d7|    for k in range(code_count + 1):
+63:16|        prev_code = source[code_cells[k-1]] if k > 0 else ""
+64:87|        next_code = source[code_cells[k]] if k < code_count else ""
+65:7b|        
+66:aa|        # truncate to max_len chars to save tokenization time
+67:61|        prev_code = prev_code[-max_len:] 
+68:b5|        next_code = next_code[:max_len]
+69:7b|        
+70:fa|        bnd_text = f"Previous: {prev_code} | Next: {next_code}"
+71:44|        boundaries.append(bnd_text)
+72:4e|    return code_cells, boundaries
+73:d4|
+74:61|def prepare_training_pairs(ids, orders_df):
+75:7a|    orders_dict = dict(zip(orders_df['id'], orders_df['cell_order']))
+76:e6|    md_texts = []
+77:1e|    bnd_texts = []
+78:0c|    
+79:ae|    for nb_id in tqdm(ids, desc="Preparing pairs"):
+80:fb|        with open(f'/data/train/{nb_id}.json', 'r', encoding='utf-8') as f:
+81:65|            nb = json.load(f)
+82:7b|        
+83:2a|        cell_types = nb['cell_type']
+84:67|        source = nb['source']
+85:fd|        order = orders_dict[nb_id].split()
+86:7b|        
+87:d9|        code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+88:7b|        
+89:67|        current_k = 0
+90:57|        for cell_id in order:
+91:30|            if cell_types[cell_id] == 'code':
+92:b8|                current_k += 1
+93:ed|            else:
+94:0b|                md_texts.append(source[cell_id])
+95:04|                bnd_texts.append(boundaries[current_k])
+96:a9|                
+97:02|    return md_texts, bnd_texts
+98:d4|
+99:a3|class NBDataset(Dataset):
+100:6f|    def __init__(self, md_texts, bnd_texts, tokenizer, max_len=128):
+101:42|        self.md_texts = md_texts
+102:8b|        self.bnd_texts = bnd_texts
+103:98|        self.tokenizer = tokenizer
+104:82|        self.max_len = max_len
+105:7b|        
+106:36|    def __len__(self):
+107:e5|        return len(self.md_texts)
+108:7b|        
+109:59|    def __getitem__(self, idx):
+110:39|        md = self.tokenizer(self.md_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+111:44|        bnd = self.tokenizer(self.bnd_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+112:7b|        
+113:c4|        return {
+114:1f|            'md_input_ids': md['input_ids'].squeeze(0),
+115:9e|            'md_attention_mask': md['attention_mask'].squeeze(0),
+116:0f|            'bnd_input_ids': bnd['input_ids'].squeeze(0),
+11
+ ... [5627 characters truncated] ... 
+ md_encs.append(emb)
+234:6c|            md_embs = torch.cat(md_encs, dim=0) # [M, D]
+235:bc|            
+236:a7|            # Compute similarities
+237:11|            if isinstance(model, nn.DataParallel):
+238:79|                scale = model.module.logit_scale.exp()
+239:ed|            else:
+240:ed|                scale = model.logit_scale.exp()
+241:a9|                
+242:fc|            sims = scale * md_embs @ bnd_embs.t() # [M, C+1]
+243:5c|            probs = F.softmax(sims, dim=1) # [M, C+1]
+244:bc|            
+245:85|            # Expected boundary position
+246:b9|            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+247:ab|            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+248:bc|            
+249:71|            # Assign ranks
+250:57|            cell_ranks = {}
+251:86|            for i, c in enumerate(code_cells):
+252:b8|                cell_ranks[c] = i + 0.5
+253:a9|                
+254:92|            for i, c in enumerate(md_cells):
+255:66|                cell_ranks[c] = exp_pos[i]
+256:a9|                
+257:fb|            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+258:1f|            val_preds.append(pred_order)
+259:31|            val_gts.append(orders_dict[nb_id].split())
+260:bc|            
+261:b2|    score = kendall_tau(val_gts, val_preds)
+262:33|    print(f"VAL_METRIC: {score}")
+263:0c|    
+264:e6|    # Predict Test
+265:0e|    test_ids = [f.split('.')[0] for f in os.listdir('/data/test') if f.endswith('.json')]
+266:c6|    sub_rows = []
+267:0c|    
+268:23|    with torch.no_grad():
+269:01|        for nb_id in tqdm(test_ids, desc="Predicting Test"):
+270:d0|            with open(f'/data/test/{nb_id}.json', 'r', encoding='utf-8') as f:
+271:30|                nb = json.load(f)
+272:a9|                
+273:d1|            cell_types = nb['cell_type']
+274:48|            source = nb['source']
+275:75|            code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+276:3c|            md_cells = [c for c, t in cell_types.items() if t == 'markdown']
+277:bc|            
+278:f0|            if not md_cells:
+279:1b|                sub_rows.append({'id': nb_id, 'cell_order': ' '.join(code_cells)})
+280:1d|                continue
+281:a9|                
+282:a9|            bnd_encs = []
+283:52|            for i in range(0, len(boundaries), 64):
+284:be|                batch_texts = boundaries[i:i+64]
+285:0c|                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+286:a9|                if isinstance(model, nn.DataParallel):
+287:b5|                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+288:1c|                else:
+289:7d|                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+290:21|                bnd_encs.append(emb)
+291:52|            bnd_embs = torch.cat(bnd_encs, dim=0) # [C+1, D]
+292:bc|            
+293:ce|            md_encs = []
+294:77|            md_texts = [source[m_id] for m_id in md_cells]
+295:35|            for i in range(0, len(md_texts), 64):
+296:bf|                batch_texts = md_texts[i:i+64]
+297:0c|                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+298:a9|                if isinstance(model, nn.DataParallel):
+299:b5|                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+300:1c|                else:
+301:7d|                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+302:a7|                md_encs.append(emb)
+303:6c|            md_embs = torch.cat(md_encs, dim=0) # [M, D]
+304:bc|            
+305:11|            if isinstance(model, nn.DataParallel):
+306:79|                scale = model.module.logit_scale.exp()
+307:ed|            else:
+308:ed|                scale = model.logit_scale.exp()
+309:a9|                
+310:9b|            sims = scale * md_embs @ bnd_embs.t()
+311:92|            probs = F.softmax(sims, dim=1)
+312:bc|            
+313:b9|            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+314:ab|            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+315:bc|            
+316:57|            cell_ranks = {}
+317:86|            for i, c in enumerate(code_cells):
+318:b8|                cell_ranks[c] = i + 0.5
+319:92|            for i, c in enumerate(md_cells):
+320:66|                cell_ranks[c] = exp_pos[i]
+321:a9|                
+322:fb|            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+323:2e|            sub_rows.append({'id': nb_id, 'cell_order': ' '.join(pred_order)})
+324:bc|            
+325:cd|    sub_df = pd.DataFrame(sub_rows)
+326:b5|    sub_df.to_csv(str(pathlib.Path(__file__).resolve().parent / 'submission.csv'), index=False)
+327:35|    print("Saved submission.csv")
+328:d4|
+329:3c|if __name__ == '__main__':
+330:a2|    tokenizer, model = train()
+331:5a|    validate_and_predict(tokenizer, model)
+2026-05-02 11:41:35,495 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #15] Sending request to model (step 15)...
+2026-05-02 11:41:35,495 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 1:ed|import os
+2:39|import json
+3:e2|import torch
+4:21|import numpy as np
+5:c1|import pandas as pd
+6:18|from tqdm import tqdm
+7:a1|from transformers import AutoTokenizer, AutoModel
+8:34|import torch.nn as nn
+9:30|import torch.nn.functional as F
+10:24|from torch.utils.data import Dataset, DataLoader
+11:47|from bisect import bisect
+12:fa|from scipy.optimize import linear_sum_assignment
+13:f6|import pathlib
+14:d4|
+15:4a|def count_inversions(a):
+16:fc|    inversions = 0
+17:7a|    sorted_so_far = []
+18:50|    for i, u in enumerate(a):
+19:09|        j = bisect(sorted_so_far, u)
+20:f9|        inversions += i - j
+21:cd|        sorted_so_far.insert(j, u)
+22:2e|    return inversions
+23:d4|
+24:21|def kendall_tau(ground_truth, predictions):
+25:4e|    total_inversions = 0
+26:71|    total_2max = 0
+27:cd|    for gt, pred in zip(ground_truth, predictions):
+28:e0|        ranks = {cell_id: i for i, cell_id in enumerate(gt)}
+29:e9|        pred_ranks = [ranks[x] for x in pred if x in ranks]
+30:de|        n = len(gt)
+31:63|        total_2max += n * (n - 1)
+32:d8|        total_inversions += count_inversions(pred_ranks)
+33:0d|    return 1 - 4 * total_inversions / total_2max
+34:d4|
+35:6e|class DualEncoder(nn.Module):
+36:76|    def __init__(self, model_name='microsoft/codebert-base'):
+37:58|        super().__init__()
+38:68|        self.encoder = AutoModel.from_pretrained(model_name)
+39:04|        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+40:7b|        
+41:e7|    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):
+42:ef|        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]
+43:dc|        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+44:7b|        
+45:30|        md_feat = F.normalize(md_feat, p=2, dim=-1)
+46:e3|        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)
+47:7b|        
+48:49|        return md_feat, bnd_feat
+49:d4|
+50:d6|    def encode_text(self, input_ids, attention_mask):
+51:85|        feat = self.encoder(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]
+52:ff|        return F.normalize(feat, p=2, dim=-1)
+53:d4|
+54:ac|def get_boundaries(nb_id, cell_types, source, max_len=512):
+55:c3|    code_cells = [c for c, t in cell_types.items() if t == 'code']
+56:d9|    code_count = len(code_cells)
+57:0c|    
+58:0b|    boundaries = []
+59:33|    # boundary 0: before first code cell
+60:73|    # boundary k: between code cell k-1 and k
+61:77|    # boundary C: after last code cell
+62:d7|    for k in range(code_count + 1):
+63:16|        prev_code = source[code_cells[k-1]] if k > 0 else ""
+64:87|        next_code = source[code_cells[k]] if k < code_count else ""
+65:7b|        
+66:aa|        # truncate to max_len chars to save tokenization time
+67:61|        prev_code = prev_code[-max_len:] 
+68:b5|        next_code = next_code[:max_len]
+69:7b|        
+70:fa|        bnd_text = f"Previous: {prev_code} | Next: {next_code}"
+71:44|        boundaries.append(bnd_text)
+72:4e|    return code_cells, boundaries
+73:d4|
+74:61|def prepare_training_pairs(ids, orders_df):
+75:7a|    orders_dict = dict(zip(orders_df['id'], orders_df['cell_order']))
+76:e6|    md_texts = []
+77:1e|    bnd_texts = []
+78:0c|    
+79:ae|    for nb_id in tqdm(ids, desc="Preparing pairs"):
+80:fb|        with open(f'/data/train/{nb_id}.json', 'r', encoding='utf-8') as f:
+81:65|            nb = json.load(f)
+82:7b|        
+83:2a|        cell_types = nb['cell_type']
+84:67|        source = nb['source']
+85:fd|        order = orders_dict[nb_id].split()
+86:7b|        
+87:d9|        code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+88:7b|        
+89:67|        current_k = 0
+90:57|        for cell_id in order:
+91:30|            if cell_types[cell_id] == 'code':
+92:b8|                current_k += 1
+93:ed|            else:
+94:0b|                md_texts.append(source[cell_id])
+95:04|                bnd_texts.append(boundaries[current_k])
+96:a9|                
+97:02|    return md_texts, bnd_texts
+98:d4|
+99:a3|class NBDataset(Dataset):
+100:6f|    def __init__(self, md_texts, bnd_texts, tokenizer, max_len=128):
+101:42|        self.md_texts = md_texts
+102:8b|        self.bnd_texts = bnd_texts
+103:98|        self.tokenizer = tokenizer
+104:82|        self.max_len = max_len
+105:7b|        
+106:36|    def __len__(self):
+107:e5|        return len(self.md_texts)
+108:7b|        
+109:59|    def __getitem__(self, idx):
+110:39|        md = self.tokenizer(self.md_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+111:44|        bnd = self.tokenizer(self.bnd_texts[idx], max_length=self.max_len, padding='max_length', truncation=True, return_tensors='pt')
+112:7b|        
+113:c4|        return {
+114:1f|            'md_input_ids': md['input_ids'].squeeze(0),
+115:9e|            'md_attention_mask': md['attention_mask'].squeeze(0),
+116:0f|            'bnd_input_ids': bnd['input_ids'].
+ ... [5641 characters truncated] ... 
+ md_encs.append(emb)
+234:6c|            md_embs = torch.cat(md_encs, dim=0) # [M, D]
+235:bc|            
+236:a7|            # Compute similarities
+237:11|            if isinstance(model, nn.DataParallel):
+238:79|                scale = model.module.logit_scale.exp()
+239:ed|            else:
+240:ed|                scale = model.logit_scale.exp()
+241:a9|                
+242:fc|            sims = scale * md_embs @ bnd_embs.t() # [M, C+1]
+243:5c|            probs = F.softmax(sims, dim=1) # [M, C+1]
+244:bc|            
+245:85|            # Expected boundary position
+246:b9|            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+247:ab|            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+248:bc|            
+249:71|            # Assign ranks
+250:57|            cell_ranks = {}
+251:86|            for i, c in enumerate(code_cells):
+252:b8|                cell_ranks[c] = i + 0.5
+253:a9|                
+254:92|            for i, c in enumerate(md_cells):
+255:66|                cell_ranks[c] = exp_pos[i]
+256:a9|                
+257:fb|            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+258:1f|            val_preds.append(pred_order)
+259:31|            val_gts.append(orders_dict[nb_id].split())
+260:bc|            
+261:b2|    score = kendall_tau(val_gts, val_preds)
+262:33|    print(f"VAL_METRIC: {score}")
+263:0c|    
+264:e6|    # Predict Test
+265:0e|    test_ids = [f.split('.')[0] for f in os.listdir('/data/test') if f.endswith('.json')]
+266:c6|    sub_rows = []
+267:0c|    
+268:23|    with torch.no_grad():
+269:01|        for nb_id in tqdm(test_ids, desc="Predicting Test"):
+270:d0|            with open(f'/data/test/{nb_id}.json', 'r', encoding='utf-8') as f:
+271:30|                nb = json.load(f)
+272:a9|                
+273:d1|            cell_types = nb['cell_type']
+274:48|            source = nb['source']
+275:75|            code_cells, boundaries = get_boundaries(nb_id, cell_types, source)
+276:3c|            md_cells = [c for c, t in cell_types.items() if t == 'markdown']
+277:bc|            
+278:f0|            if not md_cells:
+279:1b|                sub_rows.append({'id': nb_id, 'cell_order': ' '.join(code_cells)})
+280:1d|                continue
+281:a9|                
+282:a9|            bnd_encs = []
+283:52|            for i in range(0, len(boundaries), 64):
+284:be|                batch_texts = boundaries[i:i+64]
+285:0c|                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+286:a9|                if isinstance(model, nn.DataParallel):
+287:b5|                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+288:1c|                else:
+289:7d|                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+290:21|                bnd_encs.append(emb)
+291:52|            bnd_embs = torch.cat(bnd_encs, dim=0) # [C+1, D]
+292:bc|            
+293:ce|            md_encs = []
+294:77|            md_texts = [source[m_id] for m_id in md_cells]
+295:35|            for i in range(0, len(md_texts), 64):
+296:bf|                batch_texts = md_texts[i:i+64]
+297:0c|                t = tokenizer(batch_texts, max_length=256, padding=True, truncation=True, return_tensors='pt').to(device)
+298:a9|                if isinstance(model, nn.DataParallel):
+299:b5|                    emb = model.module.encode_text(t['input_ids'], t['attention_mask'])
+300:1c|                else:
+301:7d|                    emb = model.encode_text(t['input_ids'], t['attention_mask'])
+302:a7|                md_encs.append(emb)
+303:6c|            md_embs = torch.cat(md_encs, dim=0) # [M, D]
+304:bc|            
+305:11|            if isinstance(model, nn.DataParallel):
+306:79|                scale = model.module.logit_scale.exp()
+307:ed|            else:
+308:ed|                scale = model.logit_scale.exp()
+309:a9|                
+310:9b|            sims = scale * md_embs @ bnd_embs.t()
+311:92|            probs = F.softmax(sims, dim=1)
+312:bc|            
+313:b9|            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+314:ab|            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+315:bc|            
+316:57|            cell_ranks = {}
+317:86|            for i, c in enumerate(code_cells):
+318:b8|                cell_ranks[c] = i + 0.5
+319:92|            for i, c in enumerate(md_cells):
+320:66|                cell_ranks[c] = exp_pos[i]
+321:a9|                
+322:fb|            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+323:2e|            sub_rows.append({'id': nb_id, 'cell_order': ' '.join(pred_order)})
+324:bc|            
+325:cd|    sub_df = pd.DataFrame(sub_rows)
+326:b5|    sub_df.to_csv(str(pathlib.Path(__file__).resolve().parent / 'submission.csv'), index=False)
+327:35|    print("Saved submission.csv")
+328:d4|
+329:3c|if __name__ == '__main__':
+330:a2|    tokenizer, model = train()
+331:5a|    validate_and_predict(tokenizer, model)
+2026-05-02 11:41:39,016 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] hashline_edit({'new_content': '    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=0)', 'end_hash': '5c', 'end_line': 140, 'start_hash': '5c', 'start_line': 140, 'path': 'ablations/1_remove_margin_ranking_loss/main.py'})
+2026-05-02 11:41:39,016 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=38251 response_tokens=86 total=38337
+2026-05-02 11:41:39,017 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] hashline_edit | args: {'path': 'ablations/1_remove_margin_ranking_loss/main.py', 'start_line': 140, 'start_hash': '5c', 'new_content': '    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=0)', 'end_line': 140, 'end_hash': '5c', 'insert_after': False}
+2026-05-02 11:41:39,036 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] hashline_edit | result: Edited /rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_remove_margin_ranking_loss/main.py: Replaced 1 line(s) at line 140
+2026-05-02 11:41:39,037 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #16] Sending request to model (step 16)...
+2026-05-02 11:41:39,037 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Edited /rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_remove_margin_ranking_loss/main.py: Replaced 1 line(s) at line 140
+2026-05-02 11:41:43,236 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'gpu_ids': '1', 'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py'})
+2026-05-02 11:41:43,236 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=38482 response_tokens=73 total=38555
+2026-05-02 11:41:43,236 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': 'cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py', 'gpu_ids': '1'}
+2026-05-02 11:41:43,237 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: fa987bca
+Use get_job_status('fa987bca') to check progress and retrieve output when completed.
+2026-05-02 11:41:43,238 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #17] Sending request to model (step 17)...
+2026-05-02 11:41:43,238 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: fa987bca
+Use get_job_status('fa987bca') to check progress and retrieve output when completed.
+2026-05-02 11:41:46,310 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': 'fa987bca'})
+2026-05-02 11:41:46,310 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=38602 response_tokens=25 total=38627
+2026-05-02 11:41:46,311 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': 'fa987bca'}
+2026-05-02 11:51:46,412 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: fa987bca
+Status: running
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Running for: 603s
+2026-05-02 11:51:46,415 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #18] Sending request to model (step 18)...
+2026-05-02 11:51:46,415 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: fa987bca
+Status: running
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Running for: 603s
+2026-05-02 11:51:49,489 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': 'fa987bca'})
+2026-05-02 11:51:49,490 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=38709 response_tokens=60 total=38769
+2026-05-02 11:51:49,490 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': 'fa987bca'}
+2026-05-02 12:01:49,552 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: fa987bca
+Status: running
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Running for: 1206s
+2026-05-02 12:01:49,556 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #19] Sending request to model (step 19)...
+2026-05-02 12:01:49,556 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: fa987bca
+Status: running
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Running for: 1206s
+2026-05-02 12:01:55,232 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] submit_command({'command': "tail -n 20 /tmp/jc_ray_520/session_*/logs/*.out || true ; cat /proc/$(pidof -x python -o $$ | awk '{print $1}')/status | grep State || true"})
+2026-05-02 12:01:55,232 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=38853 response_tokens=256 total=39109
+2026-05-02 12:01:55,233 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] submit_command | args: {'command': "tail -n 20 /tmp/jc_ray_520/session_*/logs/*.out || true ; cat /proc/$(pidof -x python -o $$ | awk '{print $1}')/status | grep State || true", 'gpu_ids': ''}
+2026-05-02 13:28:23,257 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] submit_command | result: Job submitted successfully. Job ID: 25b8166c
+Use get_job_status('25b8166c') to check progress and retrieve output when completed.
+2026-05-02 13:28:23,260 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #20] Sending request to model (step 20)...
+2026-05-02 13:28:23,264 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job submitted successfully. Job ID: 25b8166c
+Use get_job_status('25b8166c') to check progress and retrieve output when completed.
+2026-05-02 13:28:27,301 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_gpu_status({})
+2026-05-02 13:28:27,301 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=39038 response_tokens=43 total=39081
+2026-05-02 13:28:27,302 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_gpu_status | args: {}
+2026-05-02 13:28:28,240 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_gpu_status | result: Allocated GPU IDs for this branch: 0,1
+
+Sat May  2 13:28:27 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100 80GB HBM3          On  |   00000000:04:00.0 Off |                    0 |
+| N/A   45C    P0            129W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA H100 80GB HBM3          On  |   00000000:05:00.0 Off |                    0 |
+| N/A   46C    P0             76W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+
+2026-05-02 13:28:28,242 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #21] Sending request to model (step 21)...
+2026-05-02 13:28:28,242 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Allocated GPU IDs for this branch: 0,1
+
+Sat May  2 13:28:27 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA H100 80GB HBM3          On  |   00000000:04:00.0 Off |                    0 |
+| N/A   45C    P0            129W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA H100 80GB HBM3          On  |   00000000:05:00.0 Off |                    0 |
+| N/A   46C    P0             76W /  700W |       4MiB /  81559MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+
+2026-05-02 13:28:33,067 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': 'fa987bca'})
+2026-05-02 13:28:33,067 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=39563 response_tokens=60 total=39623
+2026-05-02 13:28:33,068 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': 'fa987bca'}
+2026-05-02 13:28:33,068 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: fa987bca
+Status: completed
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 6400s
+
+Output:
+VAL_METRIC: 0.8441429657356467
+Saved submission.csv
+
+STDERR:
+2026-05-02 11:42:04.953532: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:42:06.110734: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:42:07.817625: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 87/50000 [00:00<00:57, 869.54it/s]
+Preparing pairs:   0%|          | 177/50000 [00:00<00:56, 880.21it/s]
+Preparing pairs:   1%|          | 266/50000 [00:00<00:56, 881.26it/s]
+Preparing pairs:   1%|          | 358/50000 [00:00<00:55, 893.63it/s]
+Preparing pairs:   1%|          | 448/50000 [00:00<00:55, 895.21it/s]
+Preparing pairs:   1%|          | 540/50000 [00:00<00:54, 902.74it/s]
+Preparing pairs:   1%|▏         | 633/50000 [00:00<00:54, 909.77it/s]
+Preparing pairs:   1%|▏         | 726/50000 [00:00<00:53, 915.21it/s]
+Preparing pairs:   2%|▏         | 818/50000 [00:00<00:53, 915.28it/s]
+Preparing pairs:   2%|▏         | 910/50000 [00:01<00:53, 916.45it/s]
+Preparing pairs:   2%|▏         | 1004/50000 [00:01<00:53, 920.92it/s]
+Preparing pairs:   2%|▏         | 1097/50000 [00:01<00:53, 913.11it/s]
+Preparing pairs:   2%|▏         | 1192/50000 [00:01<00:52, 921.64it/s]
+Preparing pairs:   3%|▎         | 1289/50000 [00:01<00:52, 933.18it/s]
+Preparing pairs:   3%|▎         | 1384/50000 [00:01<00:51, 936.11it/s]
+Preparing pairs:   3%|▎         | 1479/50000 [00:01<00:51, 937.59it/s]
+Preparing pairs:   3%|▎         | 1574/50000 [00:01<00:51, 941.01it/s]
+Preparing pairs:   3%|▎         | 1669/50000 [00:01<00:51, 940.66it/s]
+Preparing pairs:   4%|▎         | 1764/50000 [00:01<00:51, 935.21it/s]
+Preparing pairs:   4%|▎         | 1858/50000 [00:02<00:51, 932.72it/s]
+Preparing pairs:   4%|▍         | 1952/50000 [00:02<00:51, 932.44it/s]
+Preparing pairs:   4%|▍         | 2046/50000 [00:02<00:51, 932.38it/s]
+Preparing pairs:   4%|▍         | 2141/50000 [00:02<00:51, 935.56it/s]
+Preparing pairs:   4%|▍         | 2236/50000 [00:02<00:50, 937.53it/s]
+Preparing pairs:   5%|▍         | 2331/50000 [00:02<00:50, 940.50it/s]
+Preparing pairs:   5%|▍         | 2426/50000 [00:02<00:50, 939.26it/s]
+Preparing pairs:   5%|▌         | 2520/50000 [00:02<00:50, 935.30it/s]
+Preparing pairs:   5%|▌         | 2615/50000 [00:02<00:50, 937.35it/s]
+Preparing pairs:   5%|▌         | 2709/50000 [00:02<00:50, 935.46it/s]
+Preparing pairs:   6%|▌         | 2803/50000 [00:03<00:50, 934.78it/s]
+Preparing pairs:   6%|▌         | 2897/50000 [00:03<00:50, 935.99it/s]
+Preparing pairs:   6%|▌         | 2992/50000 [00:03<00:50, 939.22it/s]
+Preparing pairs:   6%|▌         | 3087/50000 [00:03<00:49, 941.38it/s]
+Preparing pairs:   6%|▋         | 3182/50000 [00:03<00:49, 941.50it/s]
+Preparing pairs:   7%|▋         | 3277/50000 [00:03<00:49, 940.37it/s]
+Preparing pairs:   7%|▋         | 3372/50000 [00:03<00:49, 941.18it/s]
+Preparing pairs:   7%|▋         | 3467/50000 [00:03<00:49, 935.74it/s]
+Preparing pairs:   7%|▋         | 3562/50000 [00:03<00:49, 938.24it/s]
+Preparing pairs:   7%|▋         | 3657/50000 [00:03<00:49, 940.69it/s]
+Preparing pairs:   8%|▊         | 3752/50000 [00:04<00:49, 936.88it/s]
+Preparing pairs:   8%|▊         | 3847/50000 [00:04<00:49, 940.10it/s]
+Preparing pairs:   8%|▊         | 3942/50000 [00:04<00:48, 940.05it/s]
+Preparing pairs:   8%|▊         | 4037/50000 [00:04<00:49, 935.81it/s]
+Preparing pairs:   8%|▊         | 4131/50000 [00:04<00:48, 936.64it/s]
+Preparing pairs:   8%|▊         | 4226/50000 [00:04<00:48, 938.05it/s]
+Preparing pairs:   9%|▊         | 4321/50000 [00:04<00:48, 941.15it/s]
+Preparing pairs:   9%|▉         | 4416/50000 [00:04<00:48, 942.34it/s]
+Preparing pairs:   9%|▉         | 4511/50000 [00:04<00:48, 934.14it/s]
+Preparing pairs:   9%|▉         | 4605/50000 [00:04<00:48, 931.52it/s]
+Preparing pairs:   9%|▉         | 4699/50000 [00:05<00:48, 928.72it/s]
+Preparing pairs:  10%|▉         | 4795/50000 [00:05<00:48, 937.30it/s]
+Preparing pairs:  10%|▉         | 4889/50000 [00:05<00:48, 931.51it/s]
+Preparing pairs:  10%|▉         | 4984/50000 [00:05<00:48, 935.35it/s]
+Preparing pairs:  10%|█         | 5078/50000 [00:05<00:48, 931.12it/s]
+Preparing pairs:  10%|█         | 5174/50000 [00:05<00:47, 937.75it/s]
+Pr
+ ... [215 characters truncated] ... 
+0000 [09:24<00:08, 37.21it/s]
+Predicting Test:  98%|█████████▊| 19700/20000 [09:25<00:07, 38.67it/s]
+Predicting Test:  99%|█████████▊| 19704/20000 [09:25<00:08, 36.93it/s]
+Predicting Test:  99%|█████████▊| 19708/20000 [09:25<00:07, 37.69it/s]
+Predicting Test:  99%|█████████▊| 19712/20000 [09:25<00:08, 34.96it/s]
+Predicting Test:  99%|█████████▊| 19717/20000 [09:25<00:07, 37.58it/s]
+Predicting Test:  99%|█████████▊| 19721/20000 [09:25<00:08, 32.02it/s]
+Predicting Test:  99%|█████████▊| 19726/20000 [09:25<00:07, 34.45it/s]
+Predicting Test:  99%|█████████▊| 19731/20000 [09:25<00:07, 36.88it/s]
+Predicting Test:  99%|█████████▊| 19736/20000 [09:26<00:07, 36.36it/s]
+Predicting Test:  99%|█████████▊| 19740/20000 [09:26<00:08, 31.64it/s]
+Predicting Test:  99%|█████████▊| 19745/20000 [09:26<00:07, 34.89it/s]
+Predicting Test:  99%|█████████▊| 19749/20000 [09:26<00:06, 35.96it/s]
+Predicting Test:  99%|█████████▉| 19753/20000 [09:26<00:06, 36.83it/s]
+Predicting Test:  99%|█████████▉| 19757/20000 [09:26<00:06, 37.18it/s]
+Predicting Test:  99%|█████████▉| 19762/20000 [09:26<00:05, 40.56it/s]
+Predicting Test:  99%|█████████▉| 19767/20000 [09:26<00:05, 40.05it/s]
+Predicting Test:  99%|█████████▉| 19772/20000 [09:27<00:07, 31.78it/s]
+Predicting Test:  99%|█████████▉| 19778/20000 [09:27<00:06, 36.22it/s]
+Predicting Test:  99%|█████████▉| 19783/20000 [09:27<00:05, 38.08it/s]
+Predicting Test:  99%|█████████▉| 19788/20000 [09:27<00:05, 38.22it/s]
+Predicting Test:  99%|█████████▉| 19792/20000 [09:27<00:05, 36.62it/s]
+Predicting Test:  99%|█████████▉| 19796/20000 [09:27<00:05, 36.49it/s]
+Predicting Test:  99%|█████████▉| 19800/20000 [09:27<00:05, 34.88it/s]
+Predicting Test:  99%|█████████▉| 19805/20000 [09:27<00:05, 35.78it/s]
+Predicting Test:  99%|█████████▉| 19809/20000 [09:28<00:05, 34.82it/s]
+Predicting Test:  99%|█████████▉| 19814/20000 [09:28<00:04, 37.67it/s]
+Predicting Test:  99%|█████████▉| 19818/20000 [09:28<00:05, 34.29it/s]
+Predicting Test:  99%|█████████▉| 19822/20000 [09:28<00:05, 30.14it/s]
+Predicting Test:  99%|█████████▉| 19826/20000 [09:28<00:07, 23.85it/s]
+Predicting Test:  99%|█████████▉| 19831/20000 [09:28<00:05, 28.78it/s]
+Predicting Test:  99%|█████████▉| 19835/20000 [09:29<00:06, 25.25it/s]
+Predicting Test:  99%|█████████▉| 19839/20000 [09:29<00:05, 27.59it/s]
+Predicting Test:  99%|█████████▉| 19844/20000 [09:29<00:05, 28.69it/s]
+Predicting Test:  99%|█████████▉| 19848/20000 [09:29<00:05, 25.54it/s]
+Predicting Test:  99%|█████████▉| 19852/20000 [09:29<00:05, 28.26it/s]
+Predicting Test:  99%|█████████▉| 19857/20000 [09:29<00:04, 31.91it/s]
+Predicting Test:  99%|█████████▉| 19862/20000 [09:29<00:03, 35.10it/s]
+Predicting Test:  99%|█████████▉| 19866/20000 [09:30<00:04, 31.80it/s]
+Predicting Test:  99%|█████████▉| 19870/20000 [09:30<00:04, 32.39it/s]
+Predicting Test:  99%|█████████▉| 19874/20000 [09:30<00:03, 33.48it/s]
+Predicting Test:  99%|█████████▉| 19878/20000 [09:30<00:03, 34.75it/s]
+Predicting Test:  99%|█████████▉| 19882/20000 [09:30<00:03, 33.53it/s]
+Predicting Test:  99%|█████████▉| 19887/20000 [09:30<00:03, 36.52it/s]
+Predicting Test:  99%|█████████▉| 19891/20000 [09:30<00:03, 34.16it/s]
+Predicting Test:  99%|█████████▉| 19896/20000 [09:30<00:02, 34.86it/s]
+Predicting Test: 100%|█████████▉| 19900/20000 [09:30<00:02, 35.40it/s]
+Predicting Test: 100%|█████████▉| 19904/20000 [09:31<00:02, 35.66it/s]
+Predicting Test: 100%|█████████▉| 19908/20000 [09:31<00:02, 36.78it/s]
+Predicting Test: 100%|█████████▉| 19912/20000 [09:31<00:02, 29.89it/s]
+Predicting Test: 100%|█████████▉| 19916/20000 [09:31<00:02, 28.89it/s]
+Predicting Test: 100%|█████████▉| 19920/20000 [09:31<00:02, 30.19it/s]
+Predicting Test: 100%|█████████▉| 19925/20000 [09:31<00:02, 34.90it/s]
+Predicting Test: 100%|█████████▉| 19929/20000 [09:31<00:02, 34.11it/s]
+Predicting Test: 100%|█████████▉| 19933/20000 [09:32<00:02, 32.20it/s]
+Predicting Test: 100%|█████████▉| 19937/20000 [09:32<00:01, 31.55it/s]
+Predicting Test: 100%|█████████▉| 19941/20000 [09:32<00:01, 32.99it/s]
+Predicting Test: 100%|█████████▉| 19945/20000 [09:32<00:01, 32.12it/s]
+Predicting Test: 100%|█████████▉| 19950/20000 [09:32<00:01, 36.13it/s]
+Predicting Test: 100%|█████████▉| 19956/20000 [09:32<00:01, 40.19it/s]
+Predicting Test: 100%|█████████▉| 19961/20000 [09:32<00:01, 37.74it/s]
+Predicting Test: 100%|█████████▉| 19965/20000 [09:32<00:00, 36.93it/s]
+Predicting Test: 100%|█████████▉| 19969/20000 [09:33<00:00, 35.75it/s]
+Predicting Test: 100%|█████████▉| 19974/20000 [09:33<00:00, 38.91it/s]
+Predicting Test: 100%|█████████▉| 19978/20000 [09:33<00:00, 36.57it/s]
+Predicting Test: 100%|█████████▉| 19983/20000 [09:33<00:00, 36.90it/s]
+Predicting Test: 100%|█████████▉| 19987/20000 [09:33<00:00, 37.37it/s]
+Predicting Test: 100%|█████████▉| 19991/20000 [09:33<00:00, 33.52it/s]
+Predicting Test: 100%|█████████▉| 19995/20000 [09:33<00:00, 31.53it/s]
+Predicting Test: 100%|█████████▉| 19999/20000 [09:33<00:00, 31.93it/s]
+Predicting Test: 100%|██████████| 20000/20000 [09:33<00:00, 34.85it/s]
+
+2026-05-02 13:28:33,070 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #22] Sending request to model (step 22)...
+2026-05-02 13:28:33,070 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: fa987bca
+Status: completed
+Command: export CUDA_VISIBLE_DEVICES=1 && cd /workspace/ablations/1_remove_margin_ranking_loss && python main.py
+Duration: 6400s
+
+Output:
+VAL_METRIC: 0.8441429657356467
+Saved submission.csv
+
+STDERR:
+2026-05-02 11:42:04.953532: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-05-02 11:42:06.110734: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX512_FP16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-05-02 11:42:07.817625: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+Preparing pairs:   0%|          | 0/50000 [00:00<?, ?it/s]
+Preparing pairs:   0%|          | 87/50000 [00:00<00:57, 869.54it/s]
+Preparing pairs:   0%|          | 177/50000 [00:00<00:56, 880.21it/s]
+Preparing pairs:   1%|          | 266/50000 [00:00<00:56, 881.26it/s]
+Preparing pairs:   1%|          | 358/50000 [00:00<00:55, 893.63it/s]
+Preparing pairs:   1%|          | 448/50000 [00:00<00:55, 895.21it/s]
+Preparing pairs:   1%|          | 540/50000 [00:00<00:54, 902.74it/s]
+Preparing pairs:   1%|▏         | 633/50000 [00:00<00:54, 909.77it/s]
+Preparing pairs:   1%|▏         | 726/50000 [00:00<00:53, 915.21it/s]
+Preparing pairs:   2%|▏         | 818/50000 [00:00<00:53, 915.28it/s]
+Preparing pairs:   2%|▏         | 910/50000 [00:01<00:53, 916.45it/s]
+Preparing pairs:   2%|▏         | 1004/50000 [00:01<00:53, 920.92it/s]
+Preparing pairs:   2%|▏         | 1097/50000 [00:01<00:53, 913.11it/s]
+Preparing pairs:   2%|▏         | 1192/50000 [00:01<00:52, 921.64it/s]
+Preparing pairs:   3%|▎         | 1289/50000 [00:01<00:52, 933.18it/s]
+Preparing pairs:   3%|▎         | 1384/50000 [00:01<00:51, 936.11it/s]
+Preparing pairs:   3%|▎         | 1479/50000 [00:01<00:51, 937.59it/s]
+Preparing pairs:   3%|▎         | 1574/50000 [00:01<00:51, 941.01it/s]
+Preparing pairs:   3%|▎         | 1669/50000 [00:01<00:51, 940.66it/s]
+Preparing pairs:   4%|▎         | 1764/50000 [00:01<00:51, 935.21it/s]
+Preparing pairs:   4%|▎         | 1858/50000 [00:02<00:51, 932.72it/s]
+Preparing pairs:   4%|▍         | 1952/50000 [00:02<00:51, 932.44it/s]
+Preparing pairs:   4%|▍         | 2046/50000 [00:02<00:51, 932.38it/s]
+Preparing pairs:   4%|▍         | 2141/50000 [00:02<00:51, 935.56it/s]
+Preparing pairs:   4%|▍         | 2236/50000 [00:02<00:50, 937.53it/s]
+Preparing pairs:   5%|▍         | 2331/50000 [00:02<00:50, 940.50it/s]
+Preparing pairs:   5%|▍         | 2426/50000 [00:02<00:50, 939.26it/s]
+Preparing pairs:   5%|▌         | 2520/50000 [00:02<00:50, 935.30it/s]
+Preparing pairs:   5%|▌         | 2615/50000 [00:02<00:50, 937.35it/s]
+Preparing pairs:   5%|▌         | 2709/50000 [00:02<00:50, 935.46it/s]
+Preparing pairs:   6%|▌         | 2803/50000 [00:03<00:50, 934.78it/s]
+Preparing pairs:   6%|▌         | 2897/50000 [00:03<00:50, 935.99it/s]
+Preparing pairs:   6%|▌         | 2992/50000 [00:03<00:50, 939.22it/s]
+Preparing pairs:   6%|▌         | 3087/50000 [00:03<00:49, 941.38it/s]
+Preparing pairs:   6%|▋         | 3182/50000 [00:03<00:49, 941.50it/s]
+Preparing pairs:   7%|▋         | 3277/50000 [00:03<00:49, 940.37it/s]
+Preparing pairs:   7%|▋         | 3372/50000 [00:03<00:49, 941.18it/s]
+Preparing pairs:   7%|▋         | 3467/50000 [00:03<00:49, 935.74it/s]
+Preparing pairs:   7%|▋         | 3562/50000 [00:03<00:49, 938.24it/s]
+Preparing pairs:   7%|▋         | 3657/50000 [00:03<00:49, 940.69it/s]
+Preparing pairs:   8%|▊         | 3752/50000 [00:04<00:49, 936.88it/s]
+Preparing pairs:   8%|▊         | 3847/50000 [00:04<00:49, 940.10it/s]
+Preparing pairs:   8%|▊         | 3942/50000 [00:04<00:48, 940.05it/s]
+Preparing pairs:   8%|▊         | 4037/50000 [00:04<00:49, 935.81it/s]
+Preparing pairs:   8%|▊         | 4131/50000 [00:04<00:48, 936.64it/s]
+Preparing pairs:   8%|▊         | 4226/50000 [00:04<00:48, 938.05it/s]
+Preparing pairs:   9%|▊         | 4321/50000 [00:04<00:48, 941.15it/s]
+Preparing pairs:   9%|▉         | 4416/50000 [00:04<00:48, 942.34it/s]
+Preparing pairs:   9%|▉         | 4511/50000 [00:04<00:48, 934.14it/s]
+Preparing pairs:   9%|▉         | 4605/50000 [00:04<00:48, 931.52it/s]
+Preparing pairs:   9%|▉         | 4699/50000 [00:05<00:48, 928.72it/s]
+Preparing pairs:  10%|▉         | 4795/50000 [00:05<00:48, 937.30it/s]
+Preparing pairs:  10%|▉         | 4889/50000 [00:05<00:48, 931.51it/s]
+Preparing pairs:  10%|▉         | 4984/50000 [00:05<00:48, 935.35it/s]
+Preparing pairs:  10%|█         | 5078/50000 [00:05<00:48, 931.12it/s]
+Preparing pairs:  10%|█         | 5174/50000 [00:05<00:47, 
+ ... [229 characters truncated] ... 
+0000 [09:24<00:08, 37.21it/s]
+Predicting Test:  98%|█████████▊| 19700/20000 [09:25<00:07, 38.67it/s]
+Predicting Test:  99%|█████████▊| 19704/20000 [09:25<00:08, 36.93it/s]
+Predicting Test:  99%|█████████▊| 19708/20000 [09:25<00:07, 37.69it/s]
+Predicting Test:  99%|█████████▊| 19712/20000 [09:25<00:08, 34.96it/s]
+Predicting Test:  99%|█████████▊| 19717/20000 [09:25<00:07, 37.58it/s]
+Predicting Test:  99%|█████████▊| 19721/20000 [09:25<00:08, 32.02it/s]
+Predicting Test:  99%|█████████▊| 19726/20000 [09:25<00:07, 34.45it/s]
+Predicting Test:  99%|█████████▊| 19731/20000 [09:25<00:07, 36.88it/s]
+Predicting Test:  99%|█████████▊| 19736/20000 [09:26<00:07, 36.36it/s]
+Predicting Test:  99%|█████████▊| 19740/20000 [09:26<00:08, 31.64it/s]
+Predicting Test:  99%|█████████▊| 19745/20000 [09:26<00:07, 34.89it/s]
+Predicting Test:  99%|█████████▊| 19749/20000 [09:26<00:06, 35.96it/s]
+Predicting Test:  99%|█████████▉| 19753/20000 [09:26<00:06, 36.83it/s]
+Predicting Test:  99%|█████████▉| 19757/20000 [09:26<00:06, 37.18it/s]
+Predicting Test:  99%|█████████▉| 19762/20000 [09:26<00:05, 40.56it/s]
+Predicting Test:  99%|█████████▉| 19767/20000 [09:26<00:05, 40.05it/s]
+Predicting Test:  99%|█████████▉| 19772/20000 [09:27<00:07, 31.78it/s]
+Predicting Test:  99%|█████████▉| 19778/20000 [09:27<00:06, 36.22it/s]
+Predicting Test:  99%|█████████▉| 19783/20000 [09:27<00:05, 38.08it/s]
+Predicting Test:  99%|█████████▉| 19788/20000 [09:27<00:05, 38.22it/s]
+Predicting Test:  99%|█████████▉| 19792/20000 [09:27<00:05, 36.62it/s]
+Predicting Test:  99%|█████████▉| 19796/20000 [09:27<00:05, 36.49it/s]
+Predicting Test:  99%|█████████▉| 19800/20000 [09:27<00:05, 34.88it/s]
+Predicting Test:  99%|█████████▉| 19805/20000 [09:27<00:05, 35.78it/s]
+Predicting Test:  99%|█████████▉| 19809/20000 [09:28<00:05, 34.82it/s]
+Predicting Test:  99%|█████████▉| 19814/20000 [09:28<00:04, 37.67it/s]
+Predicting Test:  99%|█████████▉| 19818/20000 [09:28<00:05, 34.29it/s]
+Predicting Test:  99%|█████████▉| 19822/20000 [09:28<00:05, 30.14it/s]
+Predicting Test:  99%|█████████▉| 19826/20000 [09:28<00:07, 23.85it/s]
+Predicting Test:  99%|█████████▉| 19831/20000 [09:28<00:05, 28.78it/s]
+Predicting Test:  99%|█████████▉| 19835/20000 [09:29<00:06, 25.25it/s]
+Predicting Test:  99%|█████████▉| 19839/20000 [09:29<00:05, 27.59it/s]
+Predicting Test:  99%|█████████▉| 19844/20000 [09:29<00:05, 28.69it/s]
+Predicting Test:  99%|█████████▉| 19848/20000 [09:29<00:05, 25.54it/s]
+Predicting Test:  99%|█████████▉| 19852/20000 [09:29<00:05, 28.26it/s]
+Predicting Test:  99%|█████████▉| 19857/20000 [09:29<00:04, 31.91it/s]
+Predicting Test:  99%|█████████▉| 19862/20000 [09:29<00:03, 35.10it/s]
+Predicting Test:  99%|█████████▉| 19866/20000 [09:30<00:04, 31.80it/s]
+Predicting Test:  99%|█████████▉| 19870/20000 [09:30<00:04, 32.39it/s]
+Predicting Test:  99%|█████████▉| 19874/20000 [09:30<00:03, 33.48it/s]
+Predicting Test:  99%|█████████▉| 19878/20000 [09:30<00:03, 34.75it/s]
+Predicting Test:  99%|█████████▉| 19882/20000 [09:30<00:03, 33.53it/s]
+Predicting Test:  99%|█████████▉| 19887/20000 [09:30<00:03, 36.52it/s]
+Predicting Test:  99%|█████████▉| 19891/20000 [09:30<00:03, 34.16it/s]
+Predicting Test:  99%|█████████▉| 19896/20000 [09:30<00:02, 34.86it/s]
+Predicting Test: 100%|█████████▉| 19900/20000 [09:30<00:02, 35.40it/s]
+Predicting Test: 100%|█████████▉| 19904/20000 [09:31<00:02, 35.66it/s]
+Predicting Test: 100%|█████████▉| 19908/20000 [09:31<00:02, 36.78it/s]
+Predicting Test: 100%|█████████▉| 19912/20000 [09:31<00:02, 29.89it/s]
+Predicting Test: 100%|█████████▉| 19916/20000 [09:31<00:02, 28.89it/s]
+Predicting Test: 100%|█████████▉| 19920/20000 [09:31<00:02, 30.19it/s]
+Predicting Test: 100%|█████████▉| 19925/20000 [09:31<00:02, 34.90it/s]
+Predicting Test: 100%|█████████▉| 19929/20000 [09:31<00:02, 34.11it/s]
+Predicting Test: 100%|█████████▉| 19933/20000 [09:32<00:02, 32.20it/s]
+Predicting Test: 100%|█████████▉| 19937/20000 [09:32<00:01, 31.55it/s]
+Predicting Test: 100%|█████████▉| 19941/20000 [09:32<00:01, 32.99it/s]
+Predicting Test: 100%|█████████▉| 19945/20000 [09:32<00:01, 32.12it/s]
+Predicting Test: 100%|█████████▉| 19950/20000 [09:32<00:01, 36.13it/s]
+Predicting Test: 100%|█████████▉| 19956/20000 [09:32<00:01, 40.19it/s]
+Predicting Test: 100%|█████████▉| 19961/20000 [09:32<00:01, 37.74it/s]
+Predicting Test: 100%|█████████▉| 19965/20000 [09:32<00:00, 36.93it/s]
+Predicting Test: 100%|█████████▉| 19969/20000 [09:33<00:00, 35.75it/s]
+Predicting Test: 100%|█████████▉| 19974/20000 [09:33<00:00, 38.91it/s]
+Predicting Test: 100%|█████████▉| 19978/20000 [09:33<00:00, 36.57it/s]
+Predicting Test: 100%|█████████▉| 19983/20000 [09:33<00:00, 36.90it/s]
+Predicting Test: 100%|█████████▉| 19987/20000 [09:33<00:00, 37.37it/s]
+Predicting Test: 100%|█████████▉| 19991/20000 [09:33<00:00, 33.52it/s]
+Predicting Test: 100%|█████████▉| 19995/20000 [09:33<00:00, 31.53it/s]
+Predicting Test: 100%|█████████▉| 19999/20000 [09:33<00:00, 31.93it/s]
+Predicting Test: 100%|██████████| 20000/20000 [09:33<00:00, 34.85it/s]
+
+2026-05-02 13:28:36,458 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] ls({'path': 'ablations/1_remove_margin_ranking_loss'})
+2026-05-02 13:28:36,458 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=46420 response_tokens=44 total=46464
+2026-05-02 13:28:36,458 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] ls | args: {'path': 'ablations/1_remove_margin_ranking_loss'}
+2026-05-02 13:28:36,473 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] ls | result: Contents of ablations/1_remove_margin_ranking_loss:
+  agent_log.txt (168272 bytes)
+  dual_encoder.pth (498666485 bytes)
+  main.py (13419 bytes)
+  submission.csv (8314451 bytes)
+2026-05-02 13:28:36,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #23] Sending request to model (step 23)...
+2026-05-02 13:28:36,475 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Contents of ablations/1_remove_margin_ranking_loss:
+  agent_log.txt (168272 bytes)
+  dual_encoder.pth (498666485 bytes)
+  main.py (13419 bytes)
+  submission.csv (8314451 bytes)
+2026-05-02 13:28:40,024 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': '90164737', 'status': 'completed'})
+2026-05-02 13:28:40,024 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': 'f21bb186', 'status': 'in_progress'})
+2026-05-02 13:28:40,024 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=46552 response_tokens=66 total=46618
+2026-05-02 13:28:40,024 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '90164737', 'status': 'completed'}
+2026-05-02 13:28:40,024 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run main.py to train and generate submission.csv' status to 'completed'
+2026-05-02 13:28:40,025 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': 'f21bb186', 'status': 'in_progress'}
+2026-05-02 13:28:40,025 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Check if submission.csv is correctly generated' status to 'in_progress'
+2026-05-02 13:28:40,026 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #24] Sending request to model (step 24)...
+2026-05-02 13:28:40,026 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Run main.py to train and generate submission.csv' status to 'completed'
+[tool-return] Updated todo 'Check if submission.csv is correctly generated' status to 'in_progress'
+2026-05-02 13:29:12,306 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'completed', 'todo_id': 'f21bb186'})
+2026-05-02 13:29:12,306 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=46672 response_tokens=49 total=46721
+2026-05-02 13:29:12,307 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': 'f21bb186', 'status': 'completed'}
+2026-05-02 13:29:12,307 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Check if submission.csv is correctly generated' status to 'completed'
+2026-05-02 13:29:12,308 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #25] Sending request to model (step 25)...
+2026-05-02 13:29:12,308 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Check if submission.csv is correctly generated' status to 'completed'
+2026-05-02 13:29:15,816 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] get_job_status({'job_id': '25b8166c'})
+2026-05-02 13:29:15,816 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=46748 response_tokens=34 total=46782
+2026-05-02 13:29:15,816 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] get_job_status | args: {'job_id': '25b8166c'}
+2026-05-02 13:29:15,817 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] get_job_status | result: Job ID: 25b8166c
+Status: completed
+Command: tail -n 20 /tmp/jc_ray_520/session_*/logs/*.out || true ; cat /proc/$(pidof -x python -o $$ | awk '{print $1}')/status | grep State || true
+Duration: 8s
+
+Output:
+State:	S (sleeping)
+
+STDERR:
+tail: cannot open '/tmp/jc_ray_520/session_*/logs/*.out' for reading: No such file or directory
+
+2026-05-02 13:29:15,818 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #26] Sending request to model (step 26)...
+2026-05-02 13:29:15,818 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Job ID: 25b8166c
+Status: completed
+Command: tail -n 20 /tmp/jc_ray_520/session_*/logs/*.out || true ; cat /proc/$(pidof -x python -o $$ | awk '{print $1}')/status | grep State || true
+Duration: 8s
+
+Output:
+State:	S (sleeping)
+
+STDERR:
+tail: cannot open '/tmp/jc_ray_520/session_*/logs/*.out' for reading: No such file or directory
+
+2026-05-02 13:29:21,305 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] I have successfully implemented and run the requested ablation experiment `remove_margin_ranking_loss`. 
+
+Here is a summary of the actions taken:
+1. **Modified `main.py`**:
+   - Copied the exact structure of the provided code into `ablations/1_remove_margin_ranking_loss/main.py`.
+   - Updated the loss computation in the training loop: removed the computation and usage of `loss_margin` and updated `loss = loss_ce`.
+   - Ensured that `submission.csv` is correctly output directly to its parent directory `ablations/1_remove_margin_ranking_loss` by resolving `pathlib.Path(__file__)`.
+
+2. **Handled Environmental Constraints**:
+   - Initial execution attempts revealed that the host environment was experiencing severe CPU RAM constraints due to multiple sibling processes running. To prevent the OOM killer from terminating the script, I set `num_workers=0` in the `DataLoader` which resolved the high multiprocess memory usage issue.
+   - Constrained execution via `CUDA_VISIBLE_DEVICES=1` on an available GPU to avoid CUDA Out-Of-Memory errors caused by other concurrently running branches utilizing GPU 0.
+
+3. **Execution**:
+   - Ran `python main.py` inside the container.
+   - The script successfully completed both training (over 2 epochs with 50,000 sampling pairs) and inference.
+   - Validation metric achieved: `0.84414`.
+
+`submission.csv` and `dual_encoder.pth` are successfully stored in `/workspace/ablations/1_remove_margin_ranking_loss/`. No further action is required.
+2026-05-02 13:29:21,305 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=46927 response_tokens=374 total=47301

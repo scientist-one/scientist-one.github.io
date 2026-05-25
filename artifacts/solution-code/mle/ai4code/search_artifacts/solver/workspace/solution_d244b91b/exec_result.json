@@ -1,0 +1,6 @@
+{
+  "term_out": "Loading splits...\nLoading train data...\nLoading val data...\nTraining TF-IDF...\nTraining Ridge...\nPredicting Val...\nEvaluating...\nVAL_METRIC: 0.7253607896551235\nPredicting Test...\nSaved submission.csv",
+  "exec_time": 149.0,
+  "analysis": "Baseline model using TF-IDF and Ridge Regression over 5000 subset notebooks to predict the normalized position of markdown cells relative to code cells. It correctly handles the task and runs fast, getting 0.725 Kendall tau score.",
+  "val_metric": 0.7253607896551235
+}

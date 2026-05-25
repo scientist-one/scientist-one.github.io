@@ -1,0 +1,19 @@
+{
+  "competition_id": "inaturalist-2019-fgvc6",
+  "score": 0.24446,
+  "gold_threshold": 0.15955,
+  "silver_threshold": 0.26058,
+  "bronze_threshold": 0.39028,
+  "median_threshold": 0.43478,
+  "any_medal": true,
+  "gold_medal": false,
+  "silver_medal": true,
+  "bronze_medal": false,
+  "above_median": true,
+  "submission_exists": true,
+  "valid_submission": true,
+  "is_lower_better": true,
+  "created_at": "2026-05-02T11:27:46.705519",
+  "submission_path": "/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-35_mle_bench.inaturalist-2019-fgvc6_parallel_explore_exploit/trajectory/i04.b3.02_mle_deep_agent/workspace/solution_final/submission.csv",
+  "success": true
+}

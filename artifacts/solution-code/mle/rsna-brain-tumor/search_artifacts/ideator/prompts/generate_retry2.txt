@@ -1,0 +1,347 @@
+You are a creative research scientist with broad cross-disciplinary reading.
+Generate **2** unconventional research ideas for the task below.
+Unconventional here means: cross-paradigm transfer, reframing the problem,
+or attacking an assumption the brief treats as fixed. The idea must still be
+runnable on the available baselines and address a real gap from the brief.
+
+# Problem
+# RSNA-MICCAI Brain Tumor Radiogenomic Classification
+
+## Description
+
+A malignant tumor in the brain is a life-threatening condition. Known as glioblastoma, it's both the most common form of brain cancer in adults and the one with the worst prognosis, with median survival being less than a year. The presence of a specific genetic sequence in the tumor known as MGMT promoter methylation has been shown to be a favorable prognostic factor and a strong predictor of responsiveness to chemotherapy.
+
+![](https://storage.googleapis.com/kaggle-media/competitions/RSNA-2021/image2.png)
+
+Currently, genetic analysis of cancer requires surgery to extract a tissue sample. Then it can take several weeks to determine the genetic characterization of the tumor. Depending upon the results and type of initial therapy chosen, a subsequent surgery may be necessary. If an accurate method to predict the genetics of the cancer through imaging (i.e., radiogenomics) alone could be developed, this would potentially minimize the number of surgeries and refine the type of therapy required.
+
+The Radiological Society of North America (RSNA) has teamed up with the Medical Image Computing and Computer Assisted Intervention Society (the MICCAI Society) to improve diagnosis and treatment planning for patients with glioblastoma. In this competition you will predict the genetic subtype of glioblastoma using MRI (magnetic resonance imaging) scans to train and test your model to detect for the presence of MGMT promoter methylation.
+
+If successful, you'll help brain cancer patients receive less invasive diagnoses and treatments. The introduction of new and customized treatment strategies before surgery has the potential to improve the management, survival, and prospects of patients with brain cancer.
+
+### Acknowledgments
+
+**The Radiological Society of North America (RSNA®)** is a non-profit organization that represents 31 radiologic subspecialties from 145 countries around the world. RSNA promotes excellence in patient care and health care delivery through education, research and technological innovation.
+
+RSNA provides high-quality educational resources, publishes five top peer-reviewed journals, hosts the world’s largest radiology conference and is dedicated to building the future of the profession through the RSNA Research & Education (R&E) Foundation, which has funded $66 million in grants since its inception. RSNA also supports and facilitates artificial intelligence (AI) research in medical imaging by sponsoring an ongoing series of AI challenge competitions.
+
+**The Medical Image Computing and Computer Assisted Intervention Society (the MICCAI Society)** is dedicated to the promotion, preservation and facilitation of research, education and practice in the field of medical image computing and computer assisted medical interventions including biomedical imaging and medical robotics. The Society achieves this aim through the organization and operation of annual high quality international conferences, workshops, tutorials and publications that promote and foster the exchange and dissemination of advanced knowledge, expertise and experience in the field produced by leading institutions and outstanding scientists, physicians and educators around the world.
+
+[A full set of acknowledgments can be found on this page](https://www.kaggle.com/c/rsna-miccai-brain-tumor-radiogenomic-classification/overview/acknowledgments).
+
+![](https://storage.googleapis.com/kaggle-media/competitions/RSNA-2021/sponsors.png)
+
+## Evaluation
+
+Submissions are evaluated on the [area under the ROC curve](http://en.wikipedia.org/wiki/Receiver_operating_characteristic) between the predicted probability and the observed target.
+
+### Submission File
+
+For each `BraTS21ID` in the test set, you must predict a probability for the target `MGMT_value`. The file should contain a header and have the following format:
+
+```
+BraTS21ID,MGMT_value
+00001,0.5
+00013,0.5
+00015,0.5
+etc.
+```
+
+## Timeline
+
+- **July 13, 2021** - Start Date.
+- **October 8, 2021** - Entry Deadline. You must accept the competition rules before this date in order to compete.
+- **October 8, 2021** - Team Merger Deadline. This is the last day participants may join or merge teams.
+- **October 15, 2021** - Final Submission Deadline.
+- **October 25, 2021** - Winners’ Requirements Deadline. This is the deadline for winners to submit to the host/Kaggle their training code, video, method description.
+
+All deadlines are at 11:59 PM UTC on the corresponding day unless otherwise noted. The competition organizers reserve the right to update the contest timeline if they deem it necessary.
+
+## Prizes
+
+- 1st Place - $6,000
+- 2nd Place - $5,000
+- 3rd Place - $4,000
+- 4th - 8th Places - $3,000 each
+
+Because this competition is being hosted in coordination with the Radiological Society of North America (RSNA®) Annual Meeting, winners will be invited and strongly encouraged to attend the conference with waived fees, contingent on review of solution and fulfillment of winners' obligations.
+
+Note that, per the [competition rules](https://www.kaggle.com/c/rsna-miccai-brain-tumor-radiogenomic-classification/rules), in addition to the standard Kaggle Winners' Obligations (open-source licensing requirements, [solution packaging/delivery](https://www.kaggle.com/WinningModelDocumentationGuidelines), presentation to host), the host team also asks that you:
+
+(i) create a short video presenting your approach and solution, and
+
+(ii) publish a link to your open sourced code on the competition forum
+
+## Code Requirements
+
+![](https://storage.googleapis.com/kaggle-media/competitions/general/Kerneler-white-desc2_transparent.png)
+
+### This is a Code Competition
+
+Submissions to this competition must be made through Notebooks. In order for the "Submit" button to be active after a commit, the following conditions must be met:
+
+- CPU Notebook <= 9 hours run-time
+- GPU Notebook <= 9 hours run-time
+- Internet access disabled
+- Freely & publicly available external data is allowed, including pre-trained models
+- Submission file must be named `submission.csv`
+
+Please see the [Code Competition FAQ](https://www.kaggle.com/docs/competitions#notebooks-only-FAQ) for more information on how to submit. And review the [code debugging doc](https://www.kaggle.com/code-competition-debugging) if you are encountering submission errors.
+
+## Acknowledgments
+
+The dataset for this challenge has been collected from institutions around the world as part of a decade-long project to advance the use of AI in brain tumor diagnosis and treatment, the **Brain Tumor Segmentation (BraTS) challenge**. Running in parallel with this challenge, a challenge addressing segmentation represents the culmination of this effort.
+
+- A comprehensive description of the both tasks of the RSNA-MICCAI Brain Tumor challenge can be found at: https://www.med.upenn.edu/cbica/brats2021/
+- Participants interested in the segmentation task of this competition can find more info at: https://www.synapse.org/brats2021
+
+### Challenge Organizing Team
+
+*(in alphabetical order)*
+
+- Spyridon Bakas, PhD - University of Pennsylvania, Philadelphia, PA, USA
+- Ujjwal Baid, PhD - University of Pennsylvania, Philadelphia, PA, USA
+- Evan Calabrese, MD, PhD - University of California San Francisco, CA, USA
+- Christopher Carr - Radiological Society of North America (RSNA), Oak Brook, IL, USA
+- Errol Colak, MD - Unity Health Toronto, Canada
+- Keyvan Farahani, PhD - National Cancer Institute (NCI), National Institutes of Health (NIH), Bethesda, MD, USA
+- Adam E. Flanders, MD - Thomas Jefferson University Hospital, Philadelphia, PA, USA
+- Jayashree Kalpathy-Cramer, PhD - Massachusetts General Hospital, Boston, MA, USA
+- Felipe C Kitamura, MD, MSc, PhD - Diagnósticos da América SA (Dasa) and Universidade Federal de São Paulo, Brazil
+- Bjoern Menze, PhD - University of Zurich, Switzerland
+- John Mongan, MD, PhD - University of California - San Francisco, CA, USA
+- Luciano Prevedello, MD, MPH - The Ohio State University, Columbus, OH, USA
+- Jeffrey Rudie, MD, PhD - University of California - San Francisco, CA, USA
+- Russell Taki Shinohara, PhD - University of Pennsylvania, Philadelphia, PA, USA
+
+### Data Contributors
+
+*(in order of decreasing data contributions)*
+
+- Christos Davatzikos, PhD, & Spyridon Bakas, PhD, & Chiharu Sako, PhD - University of Pennsylvania, Philadelphia, PA, USA
+- John Mongan, MD, PhD, & Evan Calabrese, MD, PhD, & Jeff Rudie, MD, PhD, & Christopher Hess, MD, PhD, & Soonmee Cha, MD, & Javier Villanueva-Meyer, MD - University of California San Francisco, CA, USA
+- John B. Freymann & Justin S. Kirby - on behalf of The Cancer Imaging Archive (TCIA), Cancer Imaging Program, NCI, NIH, USA
+- Benedikt Wiestler, MD, & Bjoern Menze, PhD - Technical University of Munich, Germany
+- Bjoern Menze, PhD - University of Zurich, Switzerland
+- Errol Colak, MD & Priscila Crivellaro, MD - University of Toronto, Toronto, ON, Canada
+- Rivka R. Colen, MD, & Aikaterini Kotrotsou, PhD - MD Anderson Cancer Center, TX, USA
+- Daniel Marcus, PhD, & Mikhail Milchenko, PhD, & Arash Nazeri, MD - Washington University School of Medicine in St. Louis, MO, USA
+- Hassan Fathallah-Shaykh, MD, PhD - University of Alabama at Birmingham, AL, USA
+- Roland Wiest, MD - University of Bern, Switzerland
+- Andras Jakab, MD, PhD - University of Debrecen, Hungary
+- Marc-Andre Weber, MD - Heidelberg University, Germany
+- Abhishek Mahajan, MD, & Ujjwal Baid, PhD - Tata Memorial Centre, Mumbai, India, & SGGS Institute of Engineering and Technology, Nanded, India
+
+### Sponsors
+
+Prize money for challenge winners is provided by:
+
+- Intel Corporation
+- Radiological Society of North American (RSNA)
+- NeoSoma, Inc.
+
+## Citation
+
+Adam Flanders, Chris Carr, Evan Calabrese, FelipeKitamura, MD, PhD, inversion, JeffRudie, John Mongan, Julia Elliott, Luciano Prevedello, Michelle Riopel, sprint, Spyridon Bakas, Ujjwal. (2021). RSNA-MICCAI Brain Tumor Radiogenomic Classification. Kaggle. https://kaggle.com/competitions/rsna-miccai-brain-tumor-radiogenomic-classification
+
+# Data
+
+## Dataset Description
+
+The competition data is defined by three cohorts: Training, Validation (Public), and Testing (Private). The “Training” and the “Validation” cohorts are provided to the participants, whereas the “Testing” cohort is kept hidden at all times, during and after the competition.
+
+These 3 cohorts are structured as follows: Each independent case has a dedicated folder identified by a five-digit number. Within each of these “case” folders, there are four sub-folders, each of them corresponding to each of the structural multi-parametric MRI (mpMRI) scans, in DICOM format. The exact mpMRI scans included are:
+
+- Fluid Attenuated Inversion Recovery (FLAIR)
+- T1-weighted pre-contrast (T1w)
+- T1-weighted post-contrast (T1Gd)
+- T2-weighted (T2)
+
+Exact folder structure:
+
+```
+Training/Validation/Testing
+│
+└─── 00000
+│   │
+│   └─── FLAIR
+│   │   │ Image-1.dcm
+│   │   │ Image-2.dcm
+│   │   │ ...
+│   │
+│   └─── T1w
+│   │   │ Image-1.dcm
+│   │   │ Image-2.dcm
+│   │   │ ...
+│   │
+│   └─── T1wCE
+│   │   │ Image-1.dcm
+│   │   │ Image-2.dcm
+│   │   │ ...
+│   │
+│   └─── T2w
+│   │   │ Image-1.dcm
+│   │   │ Image-2.dcm
+│   │   │ .....
+│
+└─── 00001
+│   │ ...
+│
+│ ...
+│
+└─── 00002
+│   │ ...
+
+```
+
+## Files
+
+- **train/** - folder containing the training files, with each top-level folder representing a subject. **NOTE:** There are some unexpected issues with the following three cases in the training dataset, participants can exclude the cases during training: `[00109, 00123, 00709]`. We have checked and confirmed that the testing dataset is free from such issues.
+- **train_labels.csv** - file containing the target `MGMT_value` for each subject in the training data (e.g. the presence of MGMT promoter methylation)
+- **test/** - the test files, which use the same structure as `train/`; your task is to predict the `MGMT_value` for each subject in the test data. **NOTE**: the total size of the rerun test set (Public and Private) is ~5x the size of the Public test set
+- **sample_submission.csv** - a sample submission file in the correct format
+
+## Citation
+
+If you reference or use the dataset in any form, include the following citation:
+
+> U.Baid, et al., “The RSNA-ASNR-MICCAI BraTS 2021 Benchmark on Brain Tumor Segmentation and Radiogenomic Classification”, arXiv:2107.02314, 2021.
+>
+
+# Domain Knowledge
+
+## SOTA methods (what convention assumes)
+| Category | Representative Methods | Best Known Result | Limitation for Our Task |
+|---|---|---|---|
+| Standard 2D & 3D CNN Architectures | 2D ResNet Ensembles, 3D Xception, ViT3D | AUC: 0.617 (`[2024][IEEE CSDGAIS][DL-Radiogenomic]Deep_Learning_for_Brain_Tumor_Radiogenomic_Classif.md`) | Standard 3D models suffer from severe overfitting on small datasets, while 2D models lose volumetric spatial context. |
+| Brain Foundation Models & Hypergraph Adapters | SAM-Brain3D, Hypergraph Dynamic Adapters | AUC: 0.644 (`[2025][Pattern Recognition (PR)][SAM-Brain3D]Brain_Foundation_Models_with_Hypergraph_Dynamic_Ad.md`) | General-purpose foundation models lack explicit spatial priors for isolating multi-habitat tumor descriptors. |
+| Traditional Radiomics & Hybrid Feature Weighting | mRMR + LASSO, SVM, Spatial Distribution Features | AUC: 0.760 (`[2024][Diagnostics][MGMT_ProFWise]Radiomics_and_AI_Based_Prediction_of_MGMT_Methylat.md`) | Relies heavily on handcrafted features and manual extraction, limiting end-to-end learning capabilities. |
+| Hybrid Deep Radiomics | EnhancedMGMTNet, ReFRM3D | AUC: 0.871 (`[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md`) | Fusing handcrafted features with deep features often leads to dimensionality mismatch and requires complex late-fusion strategies. |
+| Domain Knowledge Augmented Mask Fusion | 3D CNN + Mask Fusion (FLAIR + T1CE) | AUC: 0.900 (`[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md`) | Relies on perfect ground-truth segmentation masks; vulnerable to upstream segmentation failures. |
+
+## Open problems and opportunity areas
+Areas where the literature suggests room for improvement. These are GAPS, not specific hypotheses — the Ideator generates hypotheses from these areas.
+
+- **Vulnerability to Upstream Segmentation Errors**: Current mask fusion approaches assume perfect, ground-truth-like segmentation masks to crop the Region of Interest (ROI). The degradation in MGMT prediction when fed noisy, automated masks (or when propagating voxel-wise uncertainty from the segmentation model to the classification head) remains a critical gap in the literature. Joint training of segmentation and classification with uncertainty propagation is rarely explored due to memory constraints.
+- **Susceptibility to Modality Redundancy and Noise**: Standard architectures assume all 4 MRI sequences (FLAIR, T1w, T1wCE, T2w) are beneficial. However, evidence suggests modality redundancy (e.g., T1w and T2w) can harm 3D CNN performance, highlighting a gap in dynamic, patient-specific modality weighting to automatically suppress uninformative or noisy sequences. This is particularly relevant for 3D models that are highly sensitive to the "curse of dimensionality".
+- **Lack of Robustness to Missing Modalities**: Most benchmarks (like BraTS 2021) provide complete 4-sequence data, but clinical settings often have missing or corrupted scans. The literature lacks robust mechanisms to adapt mask fusion or foundation models when modalities are missing, leading to brittle pipelines. Developing fusion strategies that can gracefully degrade or impute missing spatial priors is a significant open challenge.
+- **Integration of Explicit Geometric Radiomics with Deep Features**: While deep learning models excel at extracting abstract representations, they often ignore explicit geometric properties of the tumor (e.g., sphericity, surface area) that are known to correlate with MGMT status. Fusing these explicit geometric radiomic features with deep network outputs remains an underexplored area that could enhance tumor characterization and interpretability.
+- **Lack of Explainability in Deep Radiogenomics**: While deep learning models achieve high performance, their 'black-box' nature hinders clinical adoption. The literature highlights a gap in integrating Explainable AI (XAI) techniques (e.g., generating voxel-wise uncertainty maps or attention heatmaps) directly into the training objective to build trust among neuroradiologists.
+
+| Opportunity | Supporting Evidence (papers) | Why Unexplored | Estimated Difficulty |
+|---|---|---|---|
+| Vulnerability to Upstream Segmentation Errors | `[2026][arXiv.org][BMDS-Net]BMDS_Net__A_Bayesian_Multi_Modal_Deep_Supervision_.md`, `[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md` | High computational cost of joint 3D training and complexity of propagating uncertainty from segmentation to classification. | HIGH |
+| Susceptibility to Modality Redundancy and Noise | `[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md`, `[2024][arXiv][ResNet-Glioma]Comparative_Analysis_of_2D_and_3D_ResNet_Architect.md` | Standard practice defaults to using all available sequences, assuming more data is always better. | MED |
+| Lack of Robustness to Missing Modalities | `[2025][Pattern Recognition (PR)][SAM-Brain3D]Brain_Foundation_Models_with_Hypergraph_Dynamic_Ad.md`, `[2026][arXiv.org][BMDS-Net]BMDS_Net__A_Bayesian_Multi_Modal_Deep_Supervision_.md` | Most benchmarks (like BraTS) provide complete 4-sequence data, reducing the immediate incentive to model missingness. | MED |
+| Integration of Explicit Geometric Radiomics | `[2025][arXiv][ReFRM3D]ReFRM3D__A_Radiomics_enhanced_Fused_Residual_Multi.md`, `[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md` | Difficulty in aligning handcrafted geometric features with high-dimensional deep feature spaces during end-to-end training. | MED |
+| Lack of Explainability in Deep Radiogenomics | `[2024][Engineering (MDPI)][ABTA]Advancing_Brain_Tumor_Analysis__Current_Trends__Ke.md`, `[2026][arXiv (Preprint)][BMDS-Net]BMDS_Net__A_Bayesian_Multi_Modal_Deep_Supervision_.md` | Integrating XAI directly into the loss function or training loop is computationally expensive and complex. | HIGH |
+
+## What conventional approaches have already tried
+- **Standard 3D CNNs and Vision Transformers** ([authors unknown — verify from source], 2024): Evaluated various deep learning architectures for predicting MGMT gene promoter methylation status from multi-parametric MRI. Achieved AUC 0.617 on BraTS 2021 using Xception, outperforming ViT3D (0.6006) and ResNet50 (0.5807).
+  Limitation for our task: Struggles to isolate pathological features from healthy tissue noise, leading to poor predictive performance and severe overfitting on small datasets.
+  Source: `[2024][IEEE CSDGAIS][DL-Radiogenomic]Deep_Learning_for_Brain_Tumor_Radiogenomic_Classif.md`
+- **2D vs 3D ResNet Architectures** ([authors unknown — verify from source], 2024): Compared 2D and 3D ResNet architectures for predicting MGMT status. Achieved AUC 0.6168 with a 2D ResNet152 ensemble on the UCSF Glioma Dataset, while all 3D models failed to exceed an AUC of 0.5.
+  Limitation for our task: 2D models suffer from slice-selection bias, missing volumetric context, while standard 3D models overfit severely without explicit spatial priors.
+  Source: `[2024][arXiv][ResNet-Glioma]Comparative_Analysis_of_2D_and_3D_ResNet_Architect.md`
+- **Brain Foundation Models with Hypergraph Dynamic Adapters** ([authors unknown — verify from source], 2025): Introduced SAM-Brain3D, a 3D brain-specific foundation model, combined with a Hypergraph Dynamic Adapter (HyDA) to model multi-modal relationships. Achieved a mean AUC of 0.644 on the BraTS 2021 MGMT classification task.
+  Limitation for our task: General-purpose foundation models lack the explicit spatial priors needed to isolate the tumor microenvironment for radiogenomic classification.
+  Source: `[2025][Pattern Recognition (PR)][SAM-Brain3D]Brain_Foundation_Models_with_Hypergraph_Dynamic_Ad.md`
+- **Traditional Radiomics and Hybrid Feature Weighting** (Tasci et al., 2025): Utilized a hybrid feature weighting approach combining mRMR and LASSO with an SVM classifier. Achieved an AUC of 0.760 on the UPenn-GBM dataset.
+  Limitation for our task: Handcrafted radiomics pipelines are difficult to optimize end-to-end and often fail to capture the complex, non-linear spatial hierarchies that deep learning models can learn when properly guided.
+  Source: `[2024][Diagnostics][MGMT_ProFWise]Radiomics_and_AI_Based_Prediction_of_MGMT_Methylat.md`
+- **Hybrid Deep Radiomics** ([authors unknown — verify from source], 2026): Proposed EnhancedMGMTNet, which fuses deep features from a 3D CNN encoder with handcrafted radiomics. Achieved an ROC-AUC of 0.871 on BraTS 2021.
+  Limitation for our task: Fusing handcrafted features with deep features often leads to dimensionality mismatch and requires complex late-fusion strategies that are difficult to optimize end-to-end.
+  Source: `[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md`
+- **Domain Knowledge Augmented Mask Fusion** (Koska et al., 2025): Fused segmentation masks from T1W, T1CE, T2W, and FLAIR to create a single general pathology detection mask, which was then used to crop ROIs for a 3D CNN. Achieved an AUC of 0.900 on the BraTS 2021 dataset.
+  Limitation for our task: The approach relies on perfect, pre-computed ground-truth segmentation masks and does not account for the uncertainty or potential failures of upstream automated segmentation models.
+  Source: `[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md`
+
+## Available baselines
+| Name | Role | Implementation | Expected Score | Source | Source File |
+|---|---|---|---|---|---|
+| Explainable Deep Radiogenomic Molecular Imaging | C0 | Hybrid Fusion (3D ResNet-18 + PyRadiomics + XGBoost) | 0.871 | Alyahya et al., 2025, arXiv | `[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md` |
+| Domain Knowledge Augmented Mask Fusion | C1 | 3D CNN with domain knowledge augmented mask fusion | 0.900 | Koska et al., 2025, Scientific Reports | `[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md` |
+
+## Reference paper pool (use these for cross-domain transfer)
+| # | Citation (Authors, Title, Venue, Year) | Relevance to Task | Positioning vs. Our Work |
+|---|---|---|---|
+| 1 | Abdelfattah et al., Deep Learning for Brain Tumor Radiogenomic Classification: A Multi-Parametric MRI Images, IEEE CSDGAIS, 2024. Source: `[2024][IEEE CSDGAIS][DL-Radiogenomic]Deep_Learning_for_Brain_Tumor_Radiogenomic_Classif.md` | Evaluates baseline 3D CNNs for MGMT prediction. | We replace their whole-brain input with mask-cropped ROIs to reduce overfitting. |
+| 2 | Elyassirad et al., Comparative Analysis of 2D and 3D ResNet Architectures for IDH and MGMT Mutation Detection in Glioma Patients, arXiv, 2024. Source: `[2024][arXiv][ResNet-Glioma]Comparative_Analysis_of_2D_and_3D_ResNet_Architect.md` | Compares 2D and 3D ResNet architectures for radiogenomics. | Unlike their 2D slice ensemble, we utilize full 3D volumes guided by spatial priors. |
+| 3 | Koska et al., Deep learning classification of MGMT status of glioblastomas using multiparametric MRI with a novel domain knowledge augmented mask fusion approach, Scientific Reports, 2025. Source: `[2025][Scientific Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md` | Introduces domain knowledge augmented mask fusion for MGMT classification. | We extend their static mask fusion by incorporating dynamic sequence-selective attention. |
+| 4 | Ahmed et al., Med-SegLens: Latent-Level Model Diffing for Interpretable Medical Image Segmentation, arXiv, 2026. Source: `[2026][arXiv (Preprint)][Med-SegLens]Med_SegLens__Latent_Level_Model_Diffing_for_Interp.md` | Proposes latent-level model diffing for interpreting segmentation features. | We adapt their latent-level model diffing technique to align features across the four MRI sequences before mask fusion. |
+| 5 | Alyahya et al., Multi-View MRI Approach for Classification of MGMT Methylation in Glioblastoma Patients, arXiv, 2025. Source: `[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md` | Uses an 8-channel input (MRI + masks) for explainable radiogenomics. | We avoid their computationally expensive 8-channel input by directly cropping ROIs. |
+| 6 | Tasci et al., Radiomics and AI-Based Prediction of MGMT Methylation Status in Glioblastoma Using Multiparametric MRI: A Hybrid Feature Weighting Approach, Diagnostics, 2025. Source: `[2024][Diagnostics][MGMT_ProFWise]Radiomics_and_AI_Based_Prediction_of_MGMT_Methylat.md` | Applies hybrid feature weighting (mRMR + LASSO) to handcrafted radiomics. | We replace their manual feature engineering with end-to-end deep learning on masked ROIs. |
+| 7 | Astaraki et al., A comprehensive evaluation of MRI-based radiogenomics and prognosis prediction in glioma, Frontiers in Oncology, 2026. Source: `[2023][Scientific Reports][Kassaee2023Radiogenomics]A_comprehensive_evaluation_of_MRI_based_radiogenom.md` | Quantifies spatial distribution of gliomas using anatomical structures. | We isolate the tumor microenvironment directly via mask fusion rather than anatomical ratios. |
+| 8 | Zhou et al., BMDS-Net: A Bayesian Multi-Modal Deep Supervision Network for Robust Brain Tumor Segmentation, arXiv, 2026. Source: `[2026][arXiv (Preprint)][BMDS-Net]BMDS_Net__A_Bayesian_Multi_Modal_Deep_Supervision_.md` | Proposes a Bayesian network for robust brain tumor segmentation. | We adapt their voxel-wise uncertainty propagation to dynamically down-weight noisy mask regions. |
+| 9 | Deng et al., Brain Foundation Models with Hypergraph Dynamic Adapter for Brain Disease Analysis, Pattern Recognition, 2025. Source: `[2025][Pattern Recognition (PR)][SAM-Brain3D]Brain_Foundation_Models_with_Hypergraph_Dynamic_Ad.md` | Introduces SAM-Brain3D with hypergraph dynamic adapters. | We utilize their hypergraph adapter concept to model multi-modal relationships in our attention mechanism. |
+| 10 | Jin et al., SwinCLNet: a robust framework for brain tumor segmentation via shifted window attention and cross-scale fusion, Scientific Reports, 2025. Source: `[2025][Computers in Biology and Medicine][RS-MNet]Regional_aware_and_sequence_informed_multi_decoder.md` | Develops regional-aware decoders for specific tumor subregions. | We incorporate their shifted window attention mechanism to efficiently compute 3D spatial attention within our cropped ROIs. |
+| 11 | Abod et al., Brain MR Image Synthesis with Multi-contrast Self-attention GAN, arXiv, 2026. Source: `[2026][arXiv (2026)][3D-MC-SAGAN]Brain_MR_Image_Synthesis_with_Multi_contrast_Self_.md` | Uses Memory-Bounded Hybrid Attention (MBHA) for 3D MRI synthesis. | We implement their MBHA block to efficiently compute 3D spatial attention within our CNN. |
+| 12 | Ravishankar et al., Information Geometric Approaches for Patient-Specific Test-Time Adaptation of Deep Learning Models for Semantic Segmentation, IEEE TMI, 2025. Source: `[2025][IEEE Transactions on Medical Imaging (TMI)][IG-TTA]Information_Geometric_Approaches_for_Patient_Speci.md` | Explores test-time adaptation for handling domain shifts in MRI. | We address the domain shifts they identify by training with random modality dropout. |
+| 13 | Kayser et al., brat: Aligned Multi-View Embeddings for Brain MRI Analysis, WACV, 2025. Source: `[2026][WACV][brat]brat__Aligned_Multi_View_Embeddings_for_Brain_MRI_.md` | Aligns multi-view image embeddings using Pairwise View Alignment. | We adapt their alignment strategy to synchronize features across the 4 MRI sequences before fusion. |
+| 14 | Ren et al., Clinical Interpretability of Deep Learning Segmentation Through Shapley-Derived Agreement and Uncertainty Metrics, arXiv, 2025. Source: `[2024][ArXiv (BraTS 2024 related)][ShapleySeg]Clinical_Interpretability_of_Deep_Learning_Segment.md` | Uses Shapley values to assess the importance of different MRI sequences. | Their findings on sequence importance directly inform our modality dropout ablation study. |
+| 15 | Yang et al., Graph-guided Source Selection with Sequential Transfer for Medical Image Segmentation, IEEE TMI, 2024. Source: `[2024][IEEE Transactions on Medical Imaging (TMI)][GGST]Graph_guided_Source_Selection_with_Sequential_Tran.md` | Uses task affinity metrics for source selection in transfer learning. | We utilize their affinity metrics to evaluate the impact of missing modalities on feature representations. |
+| 16 | Zhao et al., AI-driven multi-modal framework for prognostic modeling in glioblastoma: Enhancing clinical decision support, Computerized Medical Imaging and Graphics, 2025. Source: `[2025][Computerized Medical Imaging and Graphics][Zhao-GBM-2025]AI_driven_multi_modal_framework_for_prognostic_mod.md` | Integrates multi-modal data using attention-based deep learning. | We apply their attention-based integration to dynamically weight our 4 MRI sequences. |
+| 17 | Kurbiel et al., Predicting the MGMT Promoter Methylation Status in T2-FLAIR Magnetic Resonance Imaging Scans Using Machine Learning, Sensors, 2024. Source: `[2022][Sensors][MGMT-FLAIR]Predicting_the_MGMT_Promoter_Methylation_Status_in.md` | Predicts MGMT status using only T2-FLAIR radiomic features. | We overcome the limitations of their single-sequence approach by fusing masks from all 4 modalities. |
+| 18 | Deng et al., A deep learning-based automatic segmentation model for diffuse midline glioma with H3K27M alteration, Frontiers in Oncology, 2026. Source: `[2025][Frontiers in Oncology][DMG-GAN]A_deep_learning_based_automatic_segmentation_model.md` | Uses Spatial and Channel Squeeze and Excitation (ScSE) blocks. | We incorporate their ScSE blocks to force the network to focus on the masked tumor regions. |
+| 19 | Fateh et al., BRISC: Annotated Dataset for Brain Tumor Segmentation and Classification, Scientific Data, 2025. Source: `[2025][ArXiv][BRISC]BRISC__Annotated_Dataset_for_Brain_Tumor_Segmentat.md` | Details sequence harmonization and spatial standardization protocols. | We adopt their preprocessing protocols to ensure consistent input for our mask fusion pipeline. |
+| 20 | Wang et al., Niche-specific epigenetic interventions in the spatially heterogeneous glioblastoma microenvironmental landscape: strategies for radiotherapy enhancement, Frontiers in Molecular Biosciences, 2025. Source: `[2025][Frontiers in Molecular Biosciences][GBM-Epi-Spatial]Niche_specific_epigenetic_interventions_in_the_spa.md` | Maps spatial multi-omics of niche-specific signatures in glioblastoma. | Their biological validation of spatial heterogeneity justifies our focus on multi-habitat descriptors. |
+| 21 | Yang et al., Selecting the Best Sequential Transfer Path for Medical Image Segmentation with Limited Labeled Data, ICONIP, 2024. Source: `[2024][MICCAI 2024][SSTP]Selecting_the_Best_Sequential_Transfer_Path_for_Me.md` | Proposes sequential transfer learning guided by task affinity. | We use their transfer learning insights to design our cross-dataset evaluation controls. |
+| 22 | Huynh et al., Single-Cell Multiomic Profiling Uncovers Radiation Dosage-Sensitive, Cluster-Specific Regulatory Dynamics in Glioblastoma, bioRxiv, 2025. Source: `[2025][bioRxiv][GBM-Rad]Single_Cell_Multiomic_Profiling_Uncovers_Radiation.md` | Identifies cluster-specific regulatory dynamics in glioblastoma. | Their identification of cluster-specific regulatory dynamics provides the biological rationale for our spatial attention mechanisms focusing on multi-habitat descriptors. |
+| 23 | Biller et al., TumorFlow: Physics-Guided Longitudinal MRI Synthesis of Glioblastoma Growth, arXiv, 2026. Source: `[2024][ArXiv][TumorFlow]TumorFlow__Physics_Guided_MRI_Synthesis.md` | Models tumor growth dynamics using physics-guided MRI synthesis. | We use their insights into tumor concentration fields to define the boundaries of our cropped ROIs. |
+| 24 | MacRae et al., PR3DICTR: A modular AI framework for medical 3D image-based detection and outcome prediction, arXiv, 2026. Source: `[2026][arXiv][PR3DICTR]PR3DICTR__A_modular_AI_framework_for_medical_3D_im.md` | Presents a modular framework for 3D medical image classification. | We structure our multi-modal 3D stacking following their configuration-driven design principles. |
+| 25 | Xu et al., MDRAB-UNet: multi-dilated residual aggregation block U-Net for multimodal MRI brain-tumor segmentation, AIPR, 2025. Source: `[2025][AIPR][MDRAB-UNet]MDRAB_UNet__multi_dilated_residual_aggregation_blo.md` | Uses Multi-Dilated Residual Aggregation Blocks to expand receptive fields. | We integrate their MDRAB modules to capture broader spatial context within the cropped ROIs. |
+| 26 | Yang et al., Unsupervised Anomaly Detection in Brain MRI via Disentangled Anatomy Learning, arXiv, 2025. Source: `[2025][Arxiv][DAL]Unsupervised_Anomaly_Detection_in_Brain_MRI_via_Di.md` | Decouples imaging information from anatomical priors using disentangled learning. | We adapt their disentanglement approach to separate healthy tissue noise from the tumor microenvironment. |
+| 27 | Ji et al., Development and validation of a convolutional neural network for automatic differentiation of primary central nervous system lymphoma and glioblastoma, Frontiers in Oncology, 2025. Source: `[2022][Frontiers in Oncology][DenseNet264-PCNSL-GBM]Development_and_validation_of_a_convolutional_neur.md` | Utilizes a 3D DenseNet264 architecture for brain tumor differentiation. | We adopt their dense connection strategy to improve gradient flow in our 3D feature extractor. |
+| 28 | Gagnon et al., The University of California San Diego Post-Treatment Glioblastoma (UCSD-PTGBM) annotated multimodal MRI Dataset, Scientific Data, 2026. Source: `[2025][Scientific Data][UCSD-PTGBM]The_University_of_California_San_Diego_Post_Treatm.md` | Introduces novel 'Cellular Tumor' masks for post-treatment glioblastoma. | We align our multi-habitat descriptors with their clinically validated cellular tumor definitions. |
+| 29 | Vishnoi et al., A prognostic matrix gene expression signature defines functional glioblastoma phenotypes and niches, Communications Biology, 2026. Source: `[2025][Communications Biology][M17]A_prognostic_matrix_gene_expression_signature_defi.md` | Defines functional glioblastoma phenotypes and niches using gene expression. | Their definition of functional niches provides the biological rationale for our spatial attention mechanisms. |
+| 30 | Zhu et al., Integrative multi-omics analysis proposes a metabolic classification of gliomas: distinct metabolic states, immune infiltration, and prognosis, Journal of Translational Medicine, 2025. Source: `[2024][Journal of Translational Medicine][MetabolicGlioma]Integrative_multi_omics_analysis_proposes_a_metabo.md` | Identifies distinct metabolic states in different glioma regions. | We use their findings to justify why our network must focus exclusively on the diseased tissue ROIs. |
+| 31 | Rahman et al., ReFRM3D: A Radiomics-enhanced Fused Residual Multiparametric 3D Network with Multi-Scale Feature Fusion for Glioma Characterization, arXiv, 2025. Source: `[2025][arXiv][ReFRM3D]ReFRM3D__A_Radiomics_enhanced_Fused_Residual_Multi.md` | Employs Fused Multi-scale Feature Fusion (FMFF) with dilated convolutions. | We incorporate their FMFF technique to capture both local texture and global shape of the tumor mask. |
+| 32 | Jhawar et al., HD-TTA: Hypothesis-Driven Test-Time Adaptation for Safer Brain Tumor Segmentation, arXiv, 2026. Source: `[2026][arXiv (2026)][HD-TTA]HD_TTA__Hypothesis_Driven_Test_Time_Adaptation_for.md` | Highlights the importance of uncertainty quantification in test-time adaptation. | We integrate their uncertainty metrics to evaluate the reliability of our upstream segmentation masks. |
+
+# How-Might-We seeds (use one or more as starting points)
+- How might we vulnerability to Upstream Segmentation Errors? Why unexplored: High computational cost of joint 3D training and complexity of propagating uncertainty from segmentation to classification.
+- How might we susceptibility to Modality Redundancy and Noise? Why unexplored: Standard practice defaults to using all available sequences, assuming more data is always better.
+- How might we lack of Robustness to Missing Modalities? Why unexplored: Most benchmarks (like BraTS) provide complete 4-sequence data, reducing the immediate incentive to model missingness.
+- How might we integration of Explicit Geometric Radiomics? Why unexplored: Difficulty in aligning handcrafted geometric features with high-dimensional deep feature spaces during end-to-end training.
+- How might we lack of Explainability in Deep Radiogenomics? Why unexplored: Integrating XAI directly into the loss function or training loop is computationally expensive and complex.
+
+# Previous-round feedback
+(no previous round)
+
+# Output format
+Return a JSON array (and nothing else — no prose, no code fences). Each
+element:
+
+  {"title": "...", "short_hypothesis": "...", "twist": "<what assumption you're breaking>", "grounded_in": ["paper or method from the brief"], "addresses": "<which open problem>"}
+
+Generate exactly 2 ideas. Be bold but not unhinged — every idea must remain
+empirically testable against the brief's baselines.
+
+
+IMPORTANT: Do NOT propose ideas similar to any of these already-generated titles:
+- Dynamic Modality-Weighted Mask Fusion for Redundancy Suppression in Radiogenomics
+- Uncertainty-Aware Mask Fusion via Bayesian Deep Supervision for MGMT Prediction
+- Soft-Mask Latent Diffing for Error-Resilient Classification
+- Shapley-Guided Dynamic Modality Dropout
+- Information Geometric Test-Time Adaptation for Missing Scans
+- Physics-Guided Geometric Prior Injection
+- XAI Heatmaps as Active Contrastive Regularizers
+- Modality-Agnostic Anatomy Disentanglement
+- Bayesian Mask Dropout for Uncertainty Robustness
+- Hypergraph Dynamic Routing for Missing Modalities
+- Spatially Broadcasted Geometric Radiomics
+- Shifted-Window Attention for Mask-Free Subregion Discovery
+- Pairwise View Alignment for Sequence Consensus
+- Hypothesis-Driven Niche Subtyping as Proxy
+- Geometric Affinity Pre-training Curriculum
+- Sequential Transfer Routing for Incomplete Data
+- Contrast-Stripped Latent Tumor Topologies via Disentangled Representation Learning
+- Tumor Growth Dynamics as Surrogate Gradients for Missing Modalities
+- Explicit Topological Skeletons as Hypergraph Scaffolding
+- Adversarial Latent Translation of Noisy Masks using Self-Attention GANs
+- Distance-to-Metabolic-State Optimization via Inverse Latent Mapping
+- Macroscopic Radiomic Modulation of Multi-Dilated Receptive Fields
+- Epigenetic Niche-Forced Squeeze-and-Excitation Regularization
+- Spatially Antagonistic Contrastive Learning Across Tumor Sub-Habitats
+- Task-Affinity Modulated Target Smoothing for Segmentation-Brittle Samples
+Generate completely different ideas.

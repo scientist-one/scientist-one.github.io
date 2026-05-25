@@ -1,0 +1,22 @@
+[
+  {
+    "name": "no_semantic_pe",
+    "description": "Disable the semantic component of the HSC-PE module by returning only the Cartesian positional encoding (c_emb) instead of the gated hybrid encoding.",
+    "reasoning": "Evaluates the core hypothesis that map-derived semantic encodings improve object localization compared to purely ego-centric Cartesian spatial reasoning."
+  },
+  {
+    "name": "no_cartesian_pe",
+    "description": "Disable the Cartesian positional encoding in the HSC-PE module and return only the semantic distance embedding (s_emb).",
+    "reasoning": "Tests whether unconstrained objects (like pedestrians) truly suffer degraded localization without a standard Cartesian reference frame, as hypothesized."
+  },
+  {
+    "name": "no_dynamic_gating",
+    "description": "Remove the learnable gating mechanism (alpha) in the HSC-PE module and fuse the semantic and Cartesian embeddings using simple addition (e.g., s_emb + c_emb).",
+    "reasoning": "Assesses if the model actually benefits from adaptively weighting the two positional encodings based on local feature context, or if a static combination is sufficient."
+  },
+  {
+    "name": "raw_map_pe",
+    "description": "Remove the Euclidean distance transform when generating the semantic distance features, feeding the raw binary map masks directly as the semantic positional encoding.",
+    "reasoning": "Verifies whether the continuous distance gradient (semantic coordinate space) is crucial for precise localization, or if simple presence/absence on a semantic map layer works just as well."
+  }
+]

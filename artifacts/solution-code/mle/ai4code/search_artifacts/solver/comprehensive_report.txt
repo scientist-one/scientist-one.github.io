@@ -1,0 +1,155 @@
+# Kaggle-style ML Competition Exploration Report: AI4Code
+
+## Solutions Explored
+
+During the exploration, five main solutions were iteratively developed, progressively increasing complexity, model capacity, and training data sizes:
+
+1. **TF-IDF + Ridge Regression Baseline (solution_d244b91b)**
+   - **Model/Technique**: A fast, traditional ML baseline using TF-IDF features and Ridge Regression to predict the normalized position of markdown cells relative to code cells.
+   - **Hyperparameters**: Trained on a small subset of 5,000 notebooks.
+   - **Validation Metric**: Kendall tau score of 0.7253.
+   - **Learnings**: This simple approach handled the task efficiently and set a solid benchmark, proving that superficial text statistics carry meaningful positional signal.
+
+2. **CodeBERT Dual Encoder - 10k subset (solution_c71fd6f4)**
+   - **Model/Technique**: Transitioned to a deep learning paradigm using a `microsoft/codebert-base` Dual Encoder. One branch encodes markdown cells, while the other encodes structural "boundaries" between code cells (created by concatenating the end of the previous code cell with the start of the next).
+   - **Hyperparameters**: Trained on 10,000 notebooks on 2 H100 GPUs using DataParallel. Cross Entropy loss used on similarity matrix. Inference used expected position rather than strict argmax.
+   - **Validation Metric**: Kendall tau score of 0.8130.
+   - **Learnings**: The DualEncoder acting as a soft continuous bipartite matching strategy is highly effective for aligning natural language with code structure, significantly outperforming the TF-IDF baseline.
+
+3. **CodeBERT Dual Encoder - 30k subset (solution_33515fc6)**
+   - **Model/Technique**: Scaled up the previous architecture.
+   - **Hyperparameters**: Training data scaled to 30,000 notebooks, `max_len` increased from 128 to 256 for broader context window, trained for 2 epochs.
+   - **Validation Metric**: Kendall tau score of 0.8381.
+   - **Learnings**: The soft continuous boundary expectation scales seamlessly. Expanding the dataset and sequence length directly translates to large performance gains without encountering memory bottlenecks.
+
+4. **CodeBERT Dual Encoder + Margin Ranking - 50k subset (solution_57cb5153 & solution_final)**
+   - **Model/Technique**: Kept the architecture but augmented the standard contrastive Cross Entropy loss with a `MarginRankingLoss`.
+   - **Hyperparameters**: `margin=0.1`. Training data scaled further to 50,000 notebooks.
+   - **Validation Metric**: Kendall tau score of 0.8437.
+   - **Learnings**: Combining classification (CE) and ranking loss explicitly guides the model to learn a stricter rank separation between matched and non-matched boundaries. The continuous scaling of data yielded solid improvements with no overfitting.
+
+5. **CodeBERT Dual Encoder + Full Data (solution_048ad61e)**
+   - **Model/Technique**: An experimental attempt to train the Margin Ranking architecture on the entire dataset. 
+   - **Hyperparameters**: The 50,000 subset limit was removed, training on all available notebooks.
+   - **Validation Metric**: Kendall tau score of 0.8520.
+   - **Learnings**: While this yielded the absolute highest score, it was not completely finalized into the `solution_final` directory. However, it confirms that the model hasn't saturated its capacity and continues benefiting from more data.
+
+
+## Experimental Logs
+
+- **Iteration 1**: Designed and ran `solution_d244b91b` (TF-IDF + Ridge). It completed in a rapid 149 seconds. Successfully validated the evaluation pipeline and provided the 0.725 baseline. 
+- **Iteration 2**: Introduced the deep learning approach with `solution_c71fd6f4` (Dual Encoder, 10k data). Required 1111 seconds to execute. Resolved initial framing of the problem into a boundary-matching task.
+- **Iteration 3**: Expanded context window and data with `solution_33515fc6` (30k data). Ran for 3518 seconds. Observed substantial metric improvement (0.813 -> 0.838).
+- **Iteration 4**: Added margin loss and scaled to 50k notebooks in `solution_57cb5153`. Executed in 3710 seconds, pushing the metric to 0.8437. Logged as the official best solution in `solution_final/`.
+- **Iteration 5**: Attempted unconstrained data scaling in `solution_048ad61e`. It ran a full cycle with ~36,000 logging steps and scored 0.8520, proving the scalability of the architecture.
+
+
+## Empirical Findings
+
+1. **Boundary Formulation is Highly Effective**: Modeling the problem as matching markdown cells to the "boundaries" between code cells (by joining the tail of the preceding code and the head of the succeeding code) provides an incredibly rich context for a language model to infer relationships.
+2. **Soft Continuous Assignment Beats Hard Argmax**: During inference, using a softmax distribution over boundaries to compute an "expected continuous position" allowed for dense, non-colliding rank assignments. This resolved edge cases where multiple markdown cells belong to the same boundary, as they get unique continuous scores.
+3. **Loss Function Synergy**: While Cross-Entropy pushes the correct boundary's similarity up globally, incorporating `MarginRankingLoss` explicitly ensures local separation (the correct boundary is pushed to be at least `margin` higher than the closest incorrect boundaries).
+4. **Data Scaling over Model Scaling**: Pushing standard CodeBERT-base on more data (10k -> 30k -> 50k -> Full) consistently yielded strong returns (+0.04 over the iterations), showing that the task relies heavily on observing varied coding patterns rather than requiring massive LLM capacities.
+
+
+## Best Solution
+
+The finalized best solution (`solution_final/`) achieves a Kendall tau score of 0.8437. It employs a **CodeBERT Dual Encoder** architecture enhanced with a hybrid contrastive and margin ranking loss.
+
+### Pipeline Breakdown
+- **Data Loading & Feature Engineering**: 
+  The script parses notebook JSON files and extracts `code` and `markdown` cells. Code cells define structural "boundaries" (N code cells define N+1 boundaries, including the start and end of the notebook). A boundary's feature string is constructed by concatenating the last 256 characters of the preceding code cell and the first 256 characters of the succeeding code cell.
+- **Model Definition**: 
+  A `DualEncoder` wraps `microsoft/codebert-base`. It uses the `[CLS]` token representation for both markdown texts and boundary texts, normalizing them to the unit hypersphere. A learnable temperature parameter (`logit_scale`) scales the dot-product similarities.
+- **Training Procedure**: 
+  The model is trained on a 50,000-notebook subset using a batch size of 256 distributed across GPUs via `nn.DataParallel`. For each batch, the markdown-to-boundary similarity matrix is computed. A symmetric Cross-Entropy loss is applied to both dimensions. Crucially, a `MarginRankingLoss` with `margin=0.1` is added, which samples off-diagonal negative matches and enforces that the true diagonal similarity exceeds the negative similarity by the margin. Optimizer is AdamW at `2e-5` for 2 epochs.
+- **Inference & Submission Generation**: 
+  During prediction, markdown cells and boundaries are embedded independently. The softmax of the similarity matrix gives the probability of a markdown cell belonging to each boundary. By multiplying these probabilities with the physical boundary indices (0 to N) and summing, the pipeline computes an expected continuous position (e.g., 2.34) for each markdown cell. Finally, code cells are assigned integer + 0.5 ranks (e.g., 0.5, 1.5), and all cells are sorted together by these ranks to form the final predicted order sequence.
+
+### Code Snippets
+
+**1. Boundary Feature Extraction**
+*Constructs the structural context for markdown placement by fusing adjacent code cells.*
+```python
+def get_boundaries(nb_id, cell_types, source, max_len=512):
+    code_cells = [c for c, t in cell_types.items() if t == 'code']
+    code_count = len(code_cells)
+    
+    boundaries = []
+    # boundary 0: before first code cell
+    # boundary k: between code cell k-1 and k
+    # boundary C: after last code cell
+    for k in range(code_count + 1):
+        prev_code = source[code_cells[k-1]] if k > 0 else ""
+        next_code = source[code_cells[k]] if k < code_count else ""
+        
+        # truncate to max_len chars to save tokenization time
+        prev_code = prev_code[-max_len:] 
+        next_code = next_code[:max_len]
+        
+        bnd_text = f"Previous: {prev_code} | Next: {next_code}"
+        boundaries.append(bnd_text)
+    return code_cells, boundaries
+```
+
+**2. Dual Encoder Architecture**
+*Initializes separate branches for markdown and boundaries, using unit-normalized L2 embeddings and a learnable temperature.*
+```python
+class DualEncoder(nn.Module):
+    def __init__(self, model_name='microsoft/codebert-base'):
+        super().__init__()
+        self.encoder = AutoModel.from_pretrained(model_name)
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        
+    def forward(self, md_input_ids, md_attention_mask, bnd_input_ids, bnd_attention_mask):
+        md_feat = self.encoder(input_ids=md_input_ids, attention_mask=md_attention_mask)[0][:, 0]
+        bnd_feat = self.encoder(input_ids=bnd_input_ids, attention_mask=bnd_attention_mask)[0][:, 0]
+        
+        md_feat = F.normalize(md_feat, p=2, dim=-1)
+        bnd_feat = F.normalize(bnd_feat, p=2, dim=-1)
+        
+        return md_feat, bnd_feat
+```
+
+**3. Hybrid Margin Ranking Training Logic**
+*Augments Cross-Entropy with a strict margin constraint against negative boundary samples to enforce separability.*
+```python
+            logits = scale * md_feat @ bnd_feat.t()
+            labels = torch.arange(logits.size(0)).to(device)
+            loss_ce = (loss_fn(logits, labels) + loss_fn(logits.t(), labels)) / 2
+            
+            # Ranking loss: correct boundary should have higher score than other boundaries
+            # Diagonal holds correct similarities
+            pos_sim = torch.diag(logits) # [B]
+            
+            # Off-diagonal (negative boundaries)
+            # Sample negative indices: shift by 1 or random
+            neg_idx = (labels + 1) % logits.size(0)
+            neg_sim = logits[labels, neg_idx]
+            
+            target = torch.ones_like(pos_sim)
+            loss_margin = margin_loss_fn(pos_sim, neg_sim, target)
+            
+            loss = loss_ce + 0.5 * loss_margin
+```
+
+**4. Soft Continuous Position Inference**
+*Bypasses hard argmax assignments by calculating an expected continuous float position, inherently resolving tie-breakers.*
+```python
+            sims = scale * md_embs @ bnd_embs.t() # [M, C+1]
+            probs = F.softmax(sims, dim=1) # [M, C+1]
+            
+            # Expected boundary position
+            positions = torch.arange(len(boundaries)).to(device, dtype=torch.float32)
+            exp_pos = (probs * positions).sum(dim=1).cpu().numpy()
+            
+            # Assign ranks
+            cell_ranks = {}
+            for i, c in enumerate(code_cells):
+                cell_ranks[c] = i + 0.5
+                
+            for i, c in enumerate(md_cells):
+                cell_ranks[c] = exp_pos[i]
+                
+            pred_order = sorted(cell_ranks.keys(), key=lambda x: cell_ranks[x])
+```

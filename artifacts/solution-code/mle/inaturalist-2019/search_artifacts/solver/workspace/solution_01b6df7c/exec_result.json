@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.9088, Val Acc: 0.5756\nEpoch 2 - Train Loss: 2.7272, Val Acc: 0.6476\nEpoch 3 - Train Loss: 2.3079, Val Acc: 0.6925\nEpoch 4 - Train Loss: 1.9541, Val Acc: 0.7214\nEpoch 5 - Train Loss: 1.6609, Val Acc: 0.7396\nEpoch 6 - Train Loss: 1.4645, Val Acc: 0.7480\nEpoch 7 - Train Loss: 1.3816, Val Acc: 0.7493\nVAL_METRIC: 0.2507",
+  "exec_time": 2334.0,
+  "analysis": "Ablation with alpha=0.0 (purely taxonomic similarity) and beta=1.0. Achieved 74.93% validation accuracy. This is better than the baseline (74.49%) but significantly worse than purely visual (75.65%) or fusion (75.30%). It confirms that taxonomic tree distance serves as a valid regularizer for fine-grained confusion, but it is less precise and less expressive than deep visual features.",
+  "val_metric": 0.2507
+}

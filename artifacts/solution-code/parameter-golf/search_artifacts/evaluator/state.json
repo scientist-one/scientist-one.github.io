@@ -1,0 +1,50 @@
+{
+  "id": "e0326b86-6004-4cff-8099-096858771158",
+  "task": {
+    "task_id": "parameter_golf.parameter_golf",
+    "constraints": {},
+    "metadata": {
+      "score_type": "minimize",
+      "container_image": "/rmeng_data/jiefengc-data/parameter-golf-agent/training.sif",
+      "base_data_dir": "/rmeng_data/jiefengc-data/parameter-golf-agent/",
+      "eval_model": "gemini-3.1-pro-preview",
+      "output_base_dir": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs",
+      "records_db_path": "benchmarks/parameter_golf/records.db",
+      "problem_dir": "/home/jiefengc_google_com/Projects/one-ai-scientist/benchmarks/parameter_golf"
+    }
+  },
+  "current_phase": "init",
+  "iteration": 4,
+  "module_states": {},
+  "artifacts": {
+    "ideation_plan": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i04.b1.01_exploit_refine/selected_idea.yaml",
+      "summary": "Refined: Hessian-Weighted SVD Initialization for Alternating Least Squares Quantization"
+    },
+    "ideation_report": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i02.b1.01_cair_ideator_v2/idea_report.md",
+      "summary": "Idea report: Orthogonal Projection Block-Scaled Indicator Bits"
+    },
+    "report": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i04.b1.02_parameter_golf_deep_agent/comprehensive_report.txt",
+      "summary": "No summary provided."
+    },
+    "solver_code": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i04.b1.02_parameter_golf_deep_agent/solution.py",
+      "summary": "No summary provided."
+    },
+    "evaluation_metrics": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i04.b1.03_evaluator.generic/metrics.json",
+      "summary": "Evaluation completed. Metrics: {'success': 1.0, 'score': 1.0599987899999999, 'val_loss_avg': 2.31967026, 'val_loss_std': 0.0008915373670238777, 'val_bpb_avg': 1.0599987899999999, 'val_bpb_std': 0.0004073973365974556}"
+    },
+    "swarm_feedback": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/overview/i03_feedback.md",
+      "summary": "Branch feedback"
+    },
+    "exploit_context": {
+      "path": "/rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/trajectory/i04.b1.exploit_context/previous_context.md",
+      "summary": "Previous iteration context (score=1.0605)"
+    }
+  },
+  "historical_artifacts": {}
+}

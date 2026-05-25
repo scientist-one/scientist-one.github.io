@@ -1,0 +1,76 @@
+idea:
+  Name: taxonomic_enhanced_multilayer_fusion
+  Title: Taxonomic-Enhanced Multi-Layer Prototype Fusion for Robust Visual Similarity
+    Weighting
+  Short Hypothesis: Fusing multi-layer visual similarities with taxonomic tree distances
+    will filter out spurious background correlations, yielding a more accurate pairwise
+    difficulty matrix for scaling logit adjustments.
+  Abstract: The previous approach successfully utilized multi-layer prototypes from
+    a pre-trained model to estimate class visual similarities, providing a zero-cost
+    difficulty matrix for scaling logit adjustments. However, purely visual similarities
+    extracted from pre-trained networks can be susceptible to spurious background
+    correlations, especially in "in the wild" imagery like iNaturalist. We conservatively
+    refine this method by combining the multi-layer visual similarity matrix with
+    a taxonomic similarity matrix derived from the provided dataset metadata (Kingdom
+    through Genus). This fusion mitigates background bias by enforcing biological
+    structural priors on class difficulty, ensuring that the logit adjustment margins
+    more accurately reflect true fine-grained confusion rather than coincidental scene
+    similarity.
+  Experiments:
+  - hypothesis: Fusing taxonomic metadata with multi-layer visual prototypes will
+      create a more accurate similarity matrix that reduces background-induced spurious
+      correlations and improves fine-grained margins.
+    experiment_plan_steps:
+    - Extract multi-layer class prototypes from the backbone using pre-trained weights
+      and compute the base pairwise visual similarity matrix, matching the prior successful
+      method.
+    - Parse the provided JSON annotations to build a taxonomic tree for all 1,010
+      classes and compute a pairwise taxonomic similarity matrix based on the depth
+      of the lowest common ancestor.
+    - Combine the matrices using a parameterized fusion function (e.g., a convex combination
+      or weighted geometric mean) to yield the final pairwise difficulty matrix.
+    - Train the classification model applying pairwise logit adjustments scaled by
+      this fused difficulty matrix.
+    - Evaluate the top-1 and top-5 error rates, with an ablation study on the fusion
+      weight to find the optimal balance between visual and taxonomic similarities.
+  Risk Factors and Limitations: The taxonomy provided may have missing or inconsistent
+    hierarchy levels for certain classes, requiring robust fallback mechanisms (e.g.,
+    uniform distance for missing nodes) when computing tree distances. Additionally,
+    relying too heavily on taxonomic distance may under-penalize valid visual confusions
+    caused by convergent evolution or mimicry across different taxonomic branches,
+    meaning the fusion parameter must be carefully tuned to retain the benefits of
+    the multi-layer visual features.
+scores:
+  scores:
+    novelty: 7.0
+    feasibility: 9.0
+    excitement: 8.0
+    impact: 8.0
+  justifications:
+    novelty: It cleverly repurposes multi-layer prototype fusion to formulate a zero-training-cost
+      difficulty matrix for long-tailed logit adjustment, replacing complex routing
+      mechanisms.
+    feasibility: Calculating multi-layer prototypes requires only standard forward
+      passes and basic distance computations, easily integrating into standard pipelines
+      without altering the training loop.
+    excitement: A completely training-free method to extract rich visual difficulty
+      priors for logit adjustment provides an elegant, highly scalable solution that
+      the community would appreciate.
+    impact: By efficiently capturing fine-grained class confusion without multi-expert
+      overhead, it addresses a major limitation of static logit adjustments and could
+      significantly elevate single-model performance.
+  novelty_analysis:
+    most_similar: 'Prototype Fusion: A Training-Free Multi-Layer Approach...'
+    key_difference: It repurposes multi-layer prototype fusion specifically to build
+      a zero-cost pairwise distance matrix that dynamically scales logit adjustments
+      based on visual difficulty rather than static class frequencies.
+  feasibility_checks:
+    F1_needs_novel_dataset: false
+    F2_needs_heavy_compute: false
+    F3_needs_external_systems: false
+    F4_needs_non_ml_expertise: false
+    F5_phd_scope_6_months: true
+    F6_baselines_available: true
+  overall: 8.0
+  is_duplicate: false
+  rejection_reason: null

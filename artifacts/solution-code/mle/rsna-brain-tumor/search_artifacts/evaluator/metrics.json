@@ -1,0 +1,19 @@
+{
+  "competition_id": "rsna-miccai-brain-tumor-radiogenomic-classification",
+  "score": 0.65176,
+  "gold_threshold": 0.60096,
+  "silver_threshold": 0.5815,
+  "bronze_threshold": 0.57449,
+  "median_threshold": 0.52553,
+  "any_medal": true,
+  "gold_medal": true,
+  "silver_medal": false,
+  "bronze_medal": false,
+  "above_median": true,
+  "submission_exists": true,
+  "valid_submission": true,
+  "is_lower_better": false,
+  "created_at": "2026-04-27T22:31:48.275691",
+  "submission_path": "/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-04-27_18-03-08_mle_bench.rsna-miccai-brain-tumor-radiogenomic-classification_parallel_explore_exploit/trajectory/i01.b0.02_mle_deep_agent/workspace/solution_final/submission.csv",
+  "success": true
+}

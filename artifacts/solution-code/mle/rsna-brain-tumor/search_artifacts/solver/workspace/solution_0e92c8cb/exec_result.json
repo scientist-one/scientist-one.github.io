@@ -1,0 +1,6 @@
+{
+  "term_out": "Using device: cuda\nEpoch 1/10 | Train Loss: 0.7246 | Val Loss: 0.7169 | Val AUC: 0.4898 | Time: 616.6s\nEpoch 2/10 | Train Loss: 0.7010 | Val Loss: 0.7060 | Val AUC: 0.4716 | Time: 4.2s\nEpoch 3/10 | Train Loss: 0.6876 | Val Loss: 0.7540 | Val AUC: 0.4716 | Time: 1.6s\nEpoch 4/10 | Train Loss: 0.6837 | Val Loss: 0.7740 | Val AUC: 0.4749 | Time: 1.0s\nEpoch 5/10 | Train Loss: 0.6882 | Val Loss: 0.7215 | Val AUC: 0.4520 | Time: 1.0s\nEpoch 6/10 | Train Loss: 0.6545 | Val Loss: 0.7241 | Val AUC: 0.4913 | Time: 1.1s\nEpoch 7/10 | Train Loss: 0.6727 | Val Loss: 0.6984 | Val AUC: 0.5120 | Time: 1.0s\nEpoch 8/10 | Train Loss: 0.6549 | Val Loss: 0.7195 | Val AUC: 0.5160 | Time: 1.3s\nEpoch 9/10 | Train Loss: 0.6456 | Val Loss: 0.7162 | Val AUC: 0.4873 | Time: 1.0s\nEpoch 10/10 | Train Loss: 0.6689 | Val Loss: 0.7134 | Val AUC: 0.5396 | Time: 1.0s\nVAL_METRIC: 0.5396363636363637",
+  "exec_time": 758.0,
+  "analysis": "Baseline 3D CNN model using 4 modalities (FLAIR, T1w, T1wCE, T2w) resized to 32x64x64. The model was trained for 10 epochs. The validation AUC is slightly better than random (0.5396), suggesting the model can extract some signal but suffers from overfitting and difficulty generalizing given the small sample size and large 3D input dimensionality.",
+  "val_metric": 0.5396363636363637
+}

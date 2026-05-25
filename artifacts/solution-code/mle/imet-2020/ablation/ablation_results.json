@@ -1,0 +1,94 @@
+[
+  {
+    "name": "single_resolution_ensemble",
+    "description": "Remove the 448 resolution features and predictions, relying solely on the 336 resolution models for the final validation and test ensemble.",
+    "metrics": {
+      "competition_id": "imet-2020-fgvc7",
+      "score": 0.00336,
+      "gold_threshold": 0.696,
+      "silver_threshold": 0.649,
+      "bronze_threshold": 0.649,
+      "median_threshold": 0.627,
+      "any_medal": false,
+      "gold_medal": false,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": false,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:09:19.356073",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.imet-2020-fgvc7_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_single_resolution_ensemble/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "single_checkpoint_inference",
+    "description": "Change the default `num_models` parameter in the `predict_ensemble` function from 10 to 1.",
+    "metrics": {
+      "competition_id": "imet-2020-fgvc7",
+      "score": 0.00346,
+      "gold_threshold": 0.696,
+      "silver_threshold": 0.649,
+      "bronze_threshold": 0.649,
+      "median_threshold": 0.627,
+      "any_medal": false,
+      "gold_medal": false,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": false,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:06:10.422857",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.imet-2020-fgvc7_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/2_single_checkpoint_inference/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "fixed_standard_threshold",
+    "description": "Bypass the `find_best_threshold` function and hardcode the classification threshold to 0.5 when calculating `test_preds_bin`.",
+    "metrics": {
+      "competition_id": "imet-2020-fgvc7",
+      "score": 0.003,
+      "gold_threshold": 0.696,
+      "silver_threshold": 0.649,
+      "bronze_threshold": 0.649,
+      "median_threshold": 0.627,
+      "any_medal": false,
+      "gold_medal": false,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": false,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:06:28.853800",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.imet-2020-fgvc7_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/3_fixed_standard_threshold/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "shallow_mlp_head",
+    "description": "Remove the second hidden layer block (Linear(2048, 1024), BatchNorm1d, ReLU, Dropout) from the `MLP` class, projecting directly from 2048 to `num_classes`.",
+    "metrics": {
+      "competition_id": "imet-2020-fgvc7",
+      "score": 0.40554,
+      "gold_threshold": 0.696,
+      "silver_threshold": 0.649,
+      "bronze_threshold": 0.649,
+      "median_threshold": 0.627,
+      "any_medal": false,
+      "gold_medal": false,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": false,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:13:46.696479",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.imet-2020-fgvc7_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/4_shallow_mlp_head/submission.csv",
+      "success": true
+    }
+  }
+]

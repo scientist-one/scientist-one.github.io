@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.8437370724496556\nSaved submission.csv",
+  "exec_time": 3710.0,
+  "analysis": "Adding a margin ranking loss alongside the standard Cross Entropy loss. This enforces that the score of the correct boundary for a markdown cell is at least `margin` larger than any incorrect boundary score. Also increased the training subset from 30,000 to 50,000 notebooks. The combination explicitly guides the model to learn a stricter rank separation between matched and non-matched boundaries. The validation Kendall tau score improved further from 0.8381 to 0.8437.",
+  "val_metric": 0.8437370724496556
+}

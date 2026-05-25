@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.0914, Val Acc: 0.5733\nEpoch 2 - Train Loss: 1.8005, Val Acc: 0.6515\nEpoch 3 - Train Loss: 1.3068, Val Acc: 0.6915\nEpoch 4 - Train Loss: 0.8835, Val Acc: 0.7193\nEpoch 5 - Train Loss: 0.5271, Val Acc: 0.7420\nEpoch 6 - Train Loss: 0.3053, Val Acc: 0.7519\nEpoch 7 - Train Loss: 0.2182, Val Acc: 0.7547\nVAL_METRIC: 0.2453",
+  "exec_time": 2186.0,
+  "analysis": "Ablation removing label smoothing (`label_smoothing=0.0`) while retaining the best setting so far (`S = V_norm`). This achieves 75.47%. Removing label smoothing degrades performance slightly compared to retaining `label_smoothing=0.1` (75.65%). It shows that even with pairwise visual margins explicitly addressing hard fine-grained confusions, the model still benefits from general uniform overconfidence regularization.",
+  "val_metric": 0.2453
+}

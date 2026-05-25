@@ -1,0 +1,235 @@
+2026-04-28 21:10:17,065 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-04-28 21:10:17,121 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-04-28 21:10:17,121 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] You are analyzing a successful Kaggle-style ML competition solution.
+Task Description:
+
+
+Original Idea:
+idea:
+  Name: geometric_affinity_pretraining_curriculum
+  Title: Geometric Affinity Pre-training Curriculum
+  Short Hypothesis: Using task affinity metrics to pre-train a 3D CNN on synthetic,
+    purely geometric tumor shapes before fine-tuning on MRIs embeds spatial radiomic
+    priors in the network weights, circumventing the dimensionality mismatch of hybrid
+    dual-branch architectures.
+  Related Work: 'Standard 2D and 3D CNN architectures establish the baseline for MGMT
+    promoter methylation prediction but frequently suffer from severe overfitting
+    on small datasets like BraTS, while 2D ensembles lose critical volumetric spatial
+    context (`[2024][IEEE CSDGAIS][DL-Radiogenomic]Deep_Learning_for_Brain_Tumor_Radiogenomic_Classif.md`,
+    `[2024][arXiv][ResNet-Glioma]Comparative_Analysis_of_2D_and_3D_ResNet_Architect.md`).
+    To address this, the literature highlights the integration of explicit geometric
+    radiomics (e.g., tumor sphericity, surface area) via hybrid deep radiomics and
+    feature weighting architectures. However, these methods often rely heavily on
+    handcrafted feature extraction (`[2024][Diagnostics][MGMT_ProFWise]Radiomics_and_AI_Based_Prediction_of_MGMT_Methylat.md`)
+    or attempt complex late-fusion with deep features, leading to dimensionality mismatches
+    (`[2026][arXiv][MGMT-XAI]Explainable_Deep_Radiogenomic_Molecular_Imaging_fo.md`,
+    `[2025][arXiv][ReFRM3D]ReFRM3D__A_Radiomics_enhanced_Fused_Residual_Multi.md`).
+
+
+    Recent domain knowledge augmented mask fusion techniques successfully isolate
+    regions of interest (ROIs) to reduce healthy tissue noise (`[2025][Scientific
+    Reports][MGMT-MaskFusion]Deep_learning_classification_of_MGMT_status_of_gli.md`),
+    yet they still lack explicit geometric priors without adding multi-branch complexity.
+    Concurrently, advancements in sequential transfer learning demonstrate that task
+    affinity metrics can successfully guide source selection and pre-training paths
+    for medical image analysis (`[2024][IEEE Transactions on Medical Imaging (TMI)][GGST]Graph_guided_Source_Selection_with_Sequential_Tran.md`,
+    `[2024][MICCAI 2024][SSTP]Selecting_the_Best_Sequential_Transfer_Path_for_Me.md`).
+    We bridge these domains by replacing the late-fusion of handcrafted geometric
+    features with a task-affinity-guided pre-training phase on synthetic geometric
+    shapes, injecting spatial priors directly into a single-branch architecture.
+
+    '
+  Abstract: "The RSNA-MICCAI Brain Tumor Radiogenomic Classification challenge requires\
+    \ accurately predicting MGMT promoter methylation from highly dimensional 3D multiparametric\
+    \ MRI data. While it is biologically established that explicit geometric properties\
+    \ of a tumor correlate with MGMT status, standard 3D deep learning models often\
+    \ fail to capture these priors, and state-of-the-art hybrid models that fuse explicit\
+    \ radiomic features with deep network outputs suffer from dimensionality mismatch,\
+    \ training instability, and complex inference pipelines. \n\nTo solve this, we\
+    \ propose a \"Geometric Affinity Pre-training Curriculum\". Instead of extracting\
+    \ handcrafted radiomic features during inference, we shift the integration of\
+    \ explicit geometric radiomics to the pre-training phase. We procedurally generate\
+    \ a large-scale dataset of synthetic 3D geometric tumor-like shapes (ranging from\
+    \ simple ellipsoids to complex lobulated and nested structures representing distinct\
+    \ multi-habitat niches). Using task affinity metrics to ensure the synthetic source\
+    \ distribution optimally aligns with the target BraTS multi-parametric MRI distribution,\
+    \ we sequentially pre-train a 3D CNN to classify and regress these geometric properties.\
+    \ The network is subsequently fine-tuned end-to-end on the masked BraTS MRI ROIs.\n\
+    \nWe expect this curriculum to match or exceed the AUC performance of complex\
+    \ hybrid deep radiomic baselines like C0 (Explainable Deep Radiogenomic Molecular\
+    \ Imaging) and static mask methods like C1 (Domain Knowledge Augmented Mask Fusion).\
+    \ Importantly, it achieves this while maintaining a lightweight, zero-inference-overhead\
+    \ single-branch 3D CNN, heavily mitigating overfitting and simplifying the final\
+    \ radiogenomic pipeline.\n"
+  Experiments:
+  - hypothesis: Sequential pre-training on synthetic 3D tumor shapes significantly
+      improves the fine-tuned MGMT classification AUC compared to training from scratch
+      and matches or exceeds the hybrid fusion baseline C0.
+    experiment_plan_steps:
+    - 'Step 1: Procedurally generate a synthetic 3D dataset containing thousands of
+      variable geometric shapes (spheres, ellipsoids, irregular lobules) mapping to
+      known tumor multi-habitat spatial distributions.'
+    - 'S
+ ... [15647 characters truncated] ... 
+chs = 1
+    for epoch in range(pretrain_epochs):
+        pretrain_model.train()
+        for x, y in synthetic_loader:
+            x, y = x.to(device), y.to(device)
+            pretrain_optimizer.zero_grad()
+            outputs = pretrain_model(x)
+            loss = pretrain_criterion(outputs, y)
+            loss.backward()
+            pretrain_optimizer.step()
+    
+    print("Pre-training completed.")
+    
+    num_ensembles = 10
+    ensemble_preds = []
+    ensemble_val_preds = []
+    final_val_targets = val_labels
+    
+    valid_ensemble_preds = []
+    valid_ensemble_val_preds = []
+    
+    for fold in range(num_ensembles):
+        print(f"--- Ensemble Fold {fold+1}/{num_ensembles} ---")
+        
+        # Reset random seed for fine-tuning
+        np.random.seed(fold * 10)
+        torch.manual_seed(fold * 10)
+        
+        # 2. Fine-tune
+        model = Simple3DCNN(in_channels=len(modalities), num_classes=1).to(device)
+        pretrained_dict = pretrain_model.state_dict()
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'fc2' not in k}
+        model.load_state_dict(pretrained_dict, strict=False)
+        # 2. Fine-tune
+        model = Simple3DCNN(in_channels=len(modalities), num_classes=1).to(device)
+        pretrained_dict = pretrain_model.state_dict()
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'fc2' not in k}
+        model.load_state_dict(pretrained_dict, strict=False)
+        
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.Adam(model.parameters(), lr=1e-4)
+        
+        epochs = 10
+        best_auc = 0.0
+        best_state = None
+        
+        for epoch in range(epochs):
+            model.train()
+            for x, y in train_loader:
+                x, y = x.to(device), y.to(device).unsqueeze(1)
+                optimizer.zero_grad()
+                outputs = model(x)
+                loss = criterion(outputs, y)
+                loss.backward()
+                optimizer.step()
+                
+            model.eval()
+            all_preds = []
+            all_targets = []
+            with torch.no_grad():
+                for x, y in val_loader:
+                    x, y = x.to(device), y.to(device).unsqueeze(1)
+                    outputs = model(x)
+                    preds = torch.sigmoid(outputs).cpu().numpy()
+                    all_preds.extend(preds)
+                    all_targets.extend(y.cpu().numpy())
+                    
+            auc = roc_auc_score(all_targets, all_preds)
+            if auc > best_auc:
+                best_auc = auc
+                best_state = model.state_dict().copy()
+                best_val_preds = all_preds.copy()
+                
+        print(f"Fold {fold+1} Best Val AUC: {best_auc:.4f}")
+        ensemble_val_preds.append(best_val_preds)
+        
+        if best_auc > 0.53:
+            valid_ensemble_val_preds.append(best_val_preds)
+        
+        # Inference for this fold
+        model.load_state_dict(best_state)
+        model.eval()
+        fold_test_preds = []
+        with torch.no_grad():
+            for x, ids in test_loader:
+                x = x.to(device)
+                outputs = model(x)
+                preds = torch.sigmoid(outputs).cpu().numpy().squeeze()
+                if preds.ndim == 0:
+                    preds = [preds]
+                fold_test_preds.extend(preds)
+        ensemble_preds.append(fold_test_preds)
+        
+        if best_auc > 0.53:
+            valid_ensemble_preds.append(fold_test_preds)
+        
+        # Free memory
+        del model, optimizer
+        torch.cuda.empty_cache()
+        
+    val_aucs = [roc_auc_score(final_val_targets, preds) for preds in ensemble_val_preds]
+    best_idx = np.argmax(val_aucs)
+    print(f"Selecting Fold {best_idx+1} as the single best model (AUC: {val_aucs[best_idx]:.4f}).")
+    
+    avg_test_preds = ensemble_preds[best_idx]
+    avg_val_preds = ensemble_val_preds[best_idx]
+    
+    final_auc = roc_auc_score(final_val_targets, avg_val_preds)
+    print(f"VAL_METRIC: {final_auc}")
+    
+    submission = pd.DataFrame({
+        'BraTS21ID': test_ids,
+        'MGMT_value': avg_test_preds
+    })
+    submission.to_csv('submission.csv', index=False)
+
+if __name__ == '__main__':
+    main()
+```
+
+Please suggest a set of 4 distinct ablation experiments to evaluate specific
+components or simplifications of this solution. Good ablations target one component at a
+time (e.g., remove an augmentation, swap a model backbone, drop ensembling, simplify
+feature engineering, drop fold averaging). For each ablation, provide a short name, a
+description of what to remove/change in `main.py`, and the reasoning.
+Return the response as a JSON list of objects, each having keys: "name", "description", "reasoning".
+Example:
+[
+  {"name": "no_tta", "description": "Disable test-time augmentation in inference.", "reasoning": "Test impact of TTA."}
+]
+Return ONLY valid JSON.
+Use the `write_ablation_file` tool to save your response to `ablation_suggestions.txt`.
+
+2026-04-28 21:10:39,187 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_ablation_file({'content': '[\n  {\n    "name": "no_synthetic_pretraining",\n    "description": "Skip the \'ONE-TIME MASSIVE PRE-TRAINING\' block. Instantiate Simple3DCNN directly in the fold loop without loading pretrain_model.state_dict().",\n    "reasoning": "Evaluates the core hypothesis: does pre-training on explicit synthetic geometric shapes actually improve downstream classification compared to training from scratch?"\n  },\n  {\n    "name": "no_synthetic_texture_noise",\n    "description": "In SyntheticDataset.__getitem__, remove the injection of Gaussian noise and background values, feeding purely clean/binary-like geometric masks to the pre-training phase.",\n    "reasoning": "Tests whether simulating MRI-like textural noise is necessary to bridge the domain gap between synthetic shapes and real MRI scans."\n  },\n  {\n    "name": "no_modality_dropout",\n    "description": "In BraTSDataset.__getitem__, remove the \'Channel Randomization\' block where a random modality (channel) is explicitly dropped to 0.0.",\n    "reasoning": "Evaluates the impact of the modality dropout augmentation and whether forcing the model to rely on subsets of MRI sequences improves generalization."\n  },\n  {\n    "name": "no_best_seed_selection",\n    "description": "Change num_ensembles = 10 to num_ensembles = 1, removing the multi-seed search that selects the single highest Val AUC run for the final submission.",\n    "reasoning": "Isolates the baseline performance of the architecture from the upward statistical bias of running multiple random seeds and explicitly picking the best one."\n  }\n]', 'filename': 'ablation_suggestions.txt'})
+2026-04-28 21:10:39,188 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=10042 response_tokens=2464 total=12506
+2026-04-28 21:10:39,189 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_ablation_file | args: {'filename': 'ablation_suggestions.txt', 'content': '[\n  {\n    "name": "no_synthetic_pretraining",\n    "description": "Skip the \'ONE-TIME MASSIVE PRE-TRAINING\' block. Instantiate Simple3DCNN directly in the fold loop without loading pretrain_model.state_dict().",\n    "reasoning": "Evaluates the core hypothesis: does pre-training on explicit synthetic geometric shapes actually improve downstream classification compared to training from scratch?"\n  },\n  {\n    "name": "no_synthetic_texture_noise",\n    "description": "In SyntheticDataset.__getitem__, remove the injection of Gaussian noise and background values, feeding purely clean/binary-like geometric masks to the pre-training phase.",\n    "reasoning": "Tests whether simulating MRI-like textural noise is necessary to bridge the domain gap between synthetic shapes and real MRI scans."\n  },\n  {\n    "name": "no_modality_dropout",\n    "description": "In BraTSDataset.__getitem__, remove the \'Channel Randomization\' block where a random modality (channel) is explicitly dropped to 0.0.",\n    "reasoning": "Evaluates the impact of the modality dropout augmentation and whether forcing the model to rely on subsets of MRI sequences improves generalization."\n  },\n  {\n    "name": "no_best_seed_selection",\n    "description": "Change num_ensembles = 10 to num_ensembles = 1, removing the multi-seed search that selects the single highest Val AUC run for the final submission.",\n    "reasoning": "Isolates the baseline performance of the architecture from the upward statistical bias of running multiple random seeds and explicitly picking the best one."\n  }\n]'}
+2026-04-28 21:10:39,210 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_ablation_file | result: Successfully wrote ablation_suggestions.txt
+2026-04-28 21:10:39,211 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-04-28 21:10:39,211 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Successfully wrote ablation_suggestions.txt
+2026-04-28 21:10:44,074 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] [
+  {
+    "name": "no_synthetic_pretraining",
+    "description": "Skip the 'ONE-TIME MASSIVE PRE-TRAINING' block. Instantiate Simple3DCNN directly in the fold loop without loading pretrain_model.state_dict().",
+    "reasoning": "Evaluates the core hypothesis: does pre-training on explicit synthetic geometric shapes actually improve downstream classification compared to training from scratch?"
+  },
+  {
+    "name": "no_synthetic_texture_noise",
+    "description": "In SyntheticDataset.__getitem__, remove the injection of Gaussian noise and background values, feeding purely clean/binary-like geometric masks to the pre-training phase.",
+    "reasoning": "Tests whether simulating MRI-like textural noise is necessary to bridge the domain gap between synthetic shapes and real MRI scans."
+  },
+  {
+    "name": "no_modality_dropout",
+    "description": "In BraTSDataset.__getitem__, remove the 'Channel Randomization' block where a random modality (channel) is explicitly dropped to 0.0.",
+    "reasoning": "Evaluates the impact of the modality dropout augmentation and whether forcing the model to rely on subsets of MRI sequences improves generalization."
+  },
+  {
+    "name": "no_best_seed_selection",
+    "description": "Change num_ensembles = 10 to num_ensembles = 1, removing the multi-seed search that selects the single highest Val AUC run for the final submission.",
+    "reasoning": "Isolates the baseline performance of the architecture from the upward statistical bias of running multiple random seeds and explicitly picking the best one."
+  }
+]
+2026-04-28 21:10:44,074 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=10531 response_tokens=385 total=10916

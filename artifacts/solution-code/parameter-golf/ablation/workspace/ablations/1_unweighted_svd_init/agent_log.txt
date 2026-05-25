@@ -1,0 +1,1686 @@
+2026-05-05 03:06:37,011 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:06:37,011 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:06:37,048 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-05-05 03:06:37,048 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] Implement and verify a single ablation experiment.
+
+The known-good `main.py` is on disk at the relative path `main.py`. Use
+`read_file` (and `grep`) to inspect it -- do not assume its contents.
+
+Ablation to implement: Remove the `H_diag_sqrt` scaling of the error matrix `E` before the SVD and the `H_diag_inv_sqrt` unscaling of factor `B`. Compute the truncated SVD directly on the raw `E` matrix.
+
+Your goal is to make the ablated `main.py` RUN WITHOUT ERRORS. You are NOT
+trying to maximize val_bpb during these debug runs -- the official 3-seed
+averaged eval runs automatically afterwards on `main.py`'s defaults and is
+what produces the reported metric.
+
+Plan:
+1. Apply the ablation with surgical `hashline_edit` calls on `main.py`.
+   - Read the target region first to anchor the edit.
+   - Prefer flipping an existing `<feature>_enabled` flag in
+     `Hyperparameters` over rewriting a function body when both achieve the
+     same effect.
+   - Never call `write_file("main.py", ...)` -- full-file rewrites are
+     reserved for the orchestrator. `write_file` is fine for new helper files.
+   - Preserve the `--mode train` / `--mode eval` CLI and the BPB calculation.
+   - Keep `main.py`'s default hyperparameters intact (iterations, wallclock
+     cap, batch sizes, etc.) so the official 3-seed eval gets full quality.
+     Do NOT reduce these defaults to make debug runs faster -- use the `env`
+     argument of `run_experiment` for that instead (see step 2).
+
+2. Call `run_experiment("main.py", env={...})` to run training + eval on
+   8xH100. The tool returns status, val_bpb, artifact size, and trimmed
+   stdout/stderr.
+   - For debug iterations, pass `env` to shrink wall-clock cost WITHOUT
+     changing tensor shapes. Safe-to-reduce time knobs:
+     `MAX_WALLCLOCK_SECONDS`, `ITERATIONS`, `WARMUP_STEPS`, `VAL_LOSS_EVERY`.
+     Example: `env={"MAX_WALLCLOCK_SECONDS": "60", "ITERATIONS": "50"}`.
+   - DO NOT shrink shape-affecting knobs (e.g. `TRAIN_BATCH_TOKENS`,
+     `TRAIN_SEQ_LEN`, `VAL_BATCH_TOKENS`, `EVAL_SEQ_LEN`). torch.compile
+     and Triton key compiled kernels on tensor shape, and the
+     torchinductor / Triton caches are SHARED with the official 3-seed
+     eval. By keeping shapes at defaults during debug, your debug runs
+     also pre-compile the kernels the official eval needs -- the official
+     eval then hits warm cache and skips most compile time. Shrink shapes
+     and you both miss the cache and force the official eval to re-compile.
+   - Values must be strings. `grep os.environ.get` in `main.py` to discover
+     the full set of knobs.
+   - These env vars apply ONLY to this debug run; they do not affect
+     `main.py`'s defaults or the official 3-seed eval.
+
+3. If it errored, read stderr to identify the root cause, then patch with a
+   targeted `hashline_edit` and re-run. Only edit lines you can tie to a
+   specific symptom in the output.
+   - On a wall-clock timeout (e.g. `Command ... timed out after Ns`), retry
+     once before editing -- torch.compile and Triton caches warm up on the
+     first attempt, so the second run is often substantially faster.
+   - Do not silence errors with bare `except:`.
+   - Do not stub out the functionality the ablation is supposed to test.
+
+4. Stop as soon as ONE `run_experiment` call completes without errors. The
+   official 3-seed averaged eval runs automatically once you stop.
+
+You have at most 3 `run_experiment` calls. Use them carefully.
+
+2026-05-05 03:06:41,549 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_todos({'todos': [{'content': 'Read main.py and find the scaling logic related to H_diag_sqrt and E', 'active_form': 'Reading main.py and finding scaling logic', 'status': 'in_progress'}]})
+2026-05-05 03:06:41,550 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=3405 response_tokens=141 total=3546
+2026-05-05 03:06:41,551 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_todos | args: {'todos': [TodoItem(id=None, content='Read main.py and find the scaling logic related to H_diag_sqrt and E', status='in_progress', active_form='Reading main.py and finding scaling logic', parent_id=None, depends_on=[])]}
+2026-05-05 03:06:41,551 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_todos | result: Updated 1 todos: 0 completed, 1 in progress, 0 pending
+2026-05-05 03:06:41,552 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-05-05 03:06:41,553 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated 1 todos: 0 completed, 1 in progress, 0 pending
+2026-05-05 03:06:44,205 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'pattern': 'H_diag_sqrt'})
+2026-05-05 03:06:44,205 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=3570 response_tokens=28 total=3598
+2026-05-05 03:06:44,206 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'H_diag_sqrt', 'path': None, 'glob_pattern': None, 'output_mode': 'files_with_matches', 'ignore_hidden': True}
+2026-05-05 03:06:44,224 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Files containing 'H_diag_sqrt':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/agent_log.txt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py
+2026-05-05 03:06:44,226 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #3] Sending request to model (step 3)...
+2026-05-05 03:06:44,226 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Files containing 'H_diag_sqrt':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/agent_log.txt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py
+2026-05-05 03:06:47,155 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'path': 'main.py', 'pattern': 'H_diag_sqrt', 'output_mode': 'content'})
+2026-05-05 03:06:47,155 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=3808 response_tokens=39 total=3847
+2026-05-05 03:06:47,156 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'H_diag_sqrt', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:06:47,158 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Matches for 'H_diag_sqrt':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+2026-05-05 03:06:47,159 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #4] Sending request to model (step 4)...
+2026-05-05 03:06:47,159 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Matches for 'H_diag_sqrt':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+2026-05-05 03:06:50,616 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 2250, 'limit': 50, 'path': 'main.py'})
+2026-05-05 03:06:50,618 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=4214 response_tokens=34 total=4248
+2026-05-05 03:06:50,618 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 2250, 'limit': 50}
+2026-05-05 03:06:50,633 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 2251:3a|            W_q = q.float() * s.float().view(-1, 1)
+2252:b1|            E = t.float() - W_q
+2253:ba|            lqer_cands[name] = (E, float(E.norm()))
+2254:9c|    if lqer_on and lqer_cands:
+2255:69|        top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+2256:33|        asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+2257:de|        asym_g = int(getattr(h, "lqer_asym_group", 64))
+2258:95|        for name, (E, _) in top:
+2259:ea|            t_orig = state_dict[name].detach().cpu().contiguous()
+2260:87|            H = hessians[name].float().clone()
+2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+
+... (1522 more lines)
+2026-05-05 03:06:50,634 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #5] Sending request to model (step 5)...
+2026-05-05 03:06:50,634 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 2251:3a|            W_q = q.float() * s.float().view(-1, 1)
+2252:b1|            E = t.float() - W_q
+2253:ba|            lqer_cands[name] = (E, float(E.norm()))
+2254:9c|    if lqer_on and lqer_cands:
+2255:69|        top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+2256:33|        asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+2257:de|        asym_g = int(getattr(h, "lqer_asym_group", 64))
+2258:95|        for name, (E, _) in top:
+2259:ea|            t_orig = state_dict[name].detach().cpu().contiguous()
+2260:87|            H = hessians[name].float().clone()
+2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+
+... (1522 more lines)
+2026-05-05 03:06:55,140 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'output_mode': 'content', 'pattern': '@dataclass', 'path': 'main.py'})
+2026-05-05 03:06:55,140 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=5429 response_tokens=155 total=5584
+2026-05-05 03:06:55,141 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': '@dataclass', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:06:55,144 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: No matches for '@dataclass'
+2026-05-05 03:06:55,146 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #6] Sending request to model (step 6)...
+2026-05-05 03:06:55,146 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] No matches for '@dataclass'
+2026-05-05 03:06:57,866 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'path': 'main.py', 'pattern': 'class Hyperparameters', 'output_mode': 'content'})
+2026-05-05 03:06:57,866 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=5525 response_tokens=41 total=5566
+2026-05-05 03:06:57,866 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'class Hyperparameters', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:06:57,870 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Matches for 'class Hyperparameters':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:224: class Hyperparameters:
+2026-05-05 03:06:57,871 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #7] Sending request to model (step 7)...
+2026-05-05 03:06:57,871 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Matches for 'class Hyperparameters':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:224: class Hyperparameters:
+2026-05-05 03:07:00,853 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'path': 'main.py', 'limit': 100, 'offset': 224})
+2026-05-05 03:07:00,853 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=5688 response_tokens=31 total=5719
+2026-05-05 03:07:00,854 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 224, 'limit': 100}
+2026-05-05 03:07:00,856 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 225:d6|    data_path_root = os.environ.get("DATA_PATH", "/data/datasets/")
+226:60|    tokenizer_path_root = os.environ.get("TOKENIZER_PATH", "/data/tokenizers/")
+227:dc|    seed = int(os.environ.get("SEED", 42))
+228:c5|    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
+229:19|    iterations = int(os.environ.get("ITERATIONS", 20000))
+230:7a|    warmdown_frac = float(os.environ.get("WARMDOWN_FRAC", 0.85))
+231:31|    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+232:fb|    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786432))
+233:d1|    fused_ce_enabled = bool(int(os.environ.get("FUSED_CE_ENABLED", "1")))
+234:14|    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+235:7f|    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+236:d1|    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+237:b8|    val_batch_tokens = int(os.environ.get("VAL_BATCH_TOKENS", 524288))
+238:31|    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+239:9b|    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 0))
+240:79|    vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
+241:e7|    num_layers = int(os.environ.get("NUM_LAYERS", 11))
+242:40|    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
+243:fe|    model_dim = int(os.environ.get("MODEL_DIM", 512))
+244:b1|    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
+245:88|    num_heads = int(os.environ.get("NUM_HEADS", 8))
+246:77|    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
+247:54|    skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
+248:5e|    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+249:8f|    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 3e1))
+250:59|    rope_base = float(os.environ.get("ROPE_BASE", 1e4))
+251:a3|    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+252:b7|    rope_train_seq_len = int(os.environ.get("ROPE_TRAIN_SEQ_LEN", 2048))
+253:f6|    rope_yarn = bool(int(os.environ.get("ROPE_YARN", "0")))
+254:bb|    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+255:8c|    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 5.0))
+256:f9|    num_loops = int(os.environ.get("NUM_LOOPS", 2))
+257:c2|    loop_start = int(os.environ.get("LOOP_START", 3))
+258:60|    loop_end = int(os.environ.get("LOOP_END", 5))
+259:72|    enable_looping_at = float(os.environ.get("ENABLE_LOOPING_AT", 0.35))
+260:b8|    parallel_start_layer = int(os.environ.get("PARALLEL_START_LAYER", 8))
+261:48|    parallel_final_lane = os.environ.get("PARALLEL_FINAL_LANE", "mean")
+262:84|    min_lr = float(os.environ.get("MIN_LR", 0.1))
+263:db|    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
+264:b2|    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.03))
+265:8e|    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+266:85|    matrix_lr = float(os.environ.get("MATRIX_LR", 0.026))
+267:8e|    scalar_lr = float(os.environ.get("SCALAR_LR", 0.02))
+268:7d|    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.97))
+269:09|    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
+270:34|    muon_momentum_warmup_start = float(
+271:4e|        os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92)
+272:5c|    )
+273:9d|    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+274:17|    muon_row_normalize = bool(int(os.environ.get("MUON_ROW_NORMALIZE", "1")))
+275:83|    beta1 = float(os.environ.get("BETA1", 0.9))
+276:0a|    beta2 = float(os.environ.get("BETA2", 0.99))
+277:05|    adam_eps = float(os.environ.get("ADAM_EPS", 1e-08))
+278:ce|    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
+279:d8|    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+280:53|    adam_wd = float(os.environ.get("ADAM_WD", 0.02))
+281:43|    muon_wd = float(os.environ.get("MUON_WD", 0.095))
+282:82|    embed_wd = float(os.environ.get("EMBED_WD", 0.085))
+283:3b|    ema_decay = float(os.environ.get("EMA_DECAY", 0.9965))
+284:37|    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "1")))
+285:b8|    ttt_lora_rank = int(os.environ.get("TTT_LORA_RANK", 80))
+286:7c|    ttt_lora_lr = float(os.environ.get("TTT_LORA_LR", 0.0001))
+287:86|    ttt_chunk_size = int(os.environ.get("TTT_CHUNK_SIZE", 48))
+288:94|    ttt_eval_seq_len = int(os.environ.get("TTT_EVAL_SEQ_LEN", 2048))
+289:ac|    ttt_batch_size = int(os.environ.get("TTT_BATCH_SIZE", 64))
+290:23|    ttt_grad_steps = int(os.environ.get("TTT_GRAD_STEPS", 1))
+291:e9|    ttt_weight_decay = float(os.environ.get("TTT_WEIGHT_DECAY", 0.5))
+292:9e|    ttt_beta1 = float(os.environ.get("TTT_BETA1", 0))
+293:75|    ttt_beta2 = float(os.environ.get("TTT_BETA2", 0.99))
+294:b9|    ttt_k_lora = bool(int(os.environ.get("TTT_K_LORA", "1")))
+295:7c|    ttt_mlp_lora = bool(int(os.environ.get("TTT_MLP_LORA", "1")))
+296:34|    ttt_o_lora = bool(int(os.environ.get("TTT_O_LORA", "1")))
+297:26|    ttt_optimizer = os.environ.get("TTT_OPTIMIZER", "adam")
+298:00|    ttt_eval_batches = os.environ.get("TTT_EVAL_BATCHES", "")
+299:e9|    val_doc_fraction = float(os.environ.get("VAL_DOC_FRACTION", 1.0))
+300:c2|    compressor = os.environ.get("COMPRESSOR", "pergroup")
+301:23|    gptq_calibration_batches = int(os.environ.get("GPTQ_CALIBRATION_BATCHES", 16))
+302:e7|    gptq_reserve_seconds = float(os.environ.get("GPTQ_RESERVE_SECONDS", 0.5))
+303:0a|    phased_ttt_prefix_docs = int(os.environ.get("PHASED_TTT_PREFIX_DOCS", 2500))
+304:2a|    phased_ttt_num_phases = int(os.environ.get("PHASED_TTT_NUM_PHASES", 3))
+305:20|    global_ttt_lr = float(os.environ.get("GLOBAL_TTT_LR", 0.001))
+306:61|    global_ttt_momentum = float(os.environ.get("GLOBAL_TTT_MOMENTUM", 0.9))
+307:75|    global_ttt_epochs = int(os.environ.get("GLOBAL_TTT_EPOCHS", 1))
+308:13|    global_ttt_chunk_tokens = int(os.environ.get("GLOBAL_TTT_CHUNK_TOKENS", 32768))
+309:25|    global_ttt_batch_seqs = int(os.environ.get("GLOBAL_TTT_BATCH_SEQS", 32))
+310:e8|    global_ttt_warmup_start_lr = float(
+311:25|        os.environ.get("GLOBAL_TTT_WARMUP_START_LR", 0.0)
+312:5c|    )
+313:cc|    global_ttt_warmup_chunks = int(os.environ.get("GLOBAL_TTT_WARMUP_CHUNKS", 0))
+314:0f|    global_ttt_grad_clip = float(os.environ.get("GLOBAL_TTT_GRAD_CLIP", 1.0))
+315:f3|    global_ttt_respect_doc_boundaries = bool(
+316:fc|        int(os.environ.get("GLOBAL_TTT_RESPECT_DOC_BOUNDARIES", "1"))
+317:5c|    )
+318:15|    matrix_bits = int(os.environ.get("MATRIX_BITS", 6))
+319:59|    embed_bits = int(os.environ.get("EMBED_BITS", 7))
+320:c1|    matrix_clip_sigmas = float(os.environ.get("MATRIX_CLIP_SIGMAS", 12.85))
+321:fa|    embed_clip_sigmas = float(os.environ.get("EMBED_CLIP_SIGMAS", 14.0))
+322:31|    mlp_clip_sigmas = float(os.environ.get("MLP_CLIP_SIGMAS", 11.5))
+323:4f|    attn_clip_sigmas = float(os.environ.get("ATTN_CLIP_SIGMAS", 13.0))
+324:ea|    attn_out_gate_enabled = bool(int(os.environ.get("ATTN_OUT_GATE_ENABLED", "0")))
+
+... (3498 more lines)
+2026-05-05 03:07:00,858 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #8] Sending request to model (step 8)...
+2026-05-05 03:07:00,858 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 225:d6|    data_path_root = os.environ.get("DATA_PATH", "/data/datasets/")
+226:60|    tokenizer_path_root = os.environ.get("TOKENIZER_PATH", "/data/tokenizers/")
+227:dc|    seed = int(os.environ.get("SEED", 42))
+228:c5|    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
+229:19|    iterations = int(os.environ.get("ITERATIONS", 20000))
+230:7a|    warmdown_frac = float(os.environ.get("WARMDOWN_FRAC", 0.85))
+231:31|    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+232:fb|    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786432))
+233:d1|    fused_ce_enabled = bool(int(os.environ.get("FUSED_CE_ENABLED", "1")))
+234:14|    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+235:7f|    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+236:d1|    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+237:b8|    val_batch_tokens = int(os.environ.get("VAL_BATCH_TOKENS", 524288))
+238:31|    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+239:9b|    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 0))
+240:79|    vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
+241:e7|    num_layers = int(os.environ.get("NUM_LAYERS", 11))
+242:40|    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
+243:fe|    model_dim = int(os.environ.get("MODEL_DIM", 512))
+244:b1|    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
+245:88|    num_heads = int(os.environ.get("NUM_HEADS", 8))
+246:77|    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
+247:54|    skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
+248:5e|    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+249:8f|    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 3e1))
+250:59|    rope_base = float(os.environ.get("ROPE_BASE", 1e4))
+251:a3|    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+252:b7|    rope_train_seq_len = int(os.environ.get("ROPE_TRAIN_SEQ_LEN", 2048))
+253:f6|    rope_yarn = bool(int(os.environ.get("ROPE_YARN", "0")))
+254:bb|    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+255:8c|    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 5.0))
+256:f9|    num_loops = int(os.environ.get("NUM_LOOPS", 2))
+257:c2|    loop_start = int(os.environ.get("LOOP_START", 3))
+258:60|    loop_end = int(os.environ.get("LOOP_END", 5))
+259:72|    enable_looping_at = float(os.environ.get("ENABLE_LOOPING_AT", 0.35))
+260:b8|    parallel_start_layer = int(os.environ.get("PARALLEL_START_LAYER", 8))
+261:48|    parallel_final_lane = os.environ.get("PARALLEL_FINAL_LANE", "mean")
+262:84|    min_lr = float(os.environ.get("MIN_LR", 0.1))
+263:db|    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
+264:b2|    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.03))
+265:8e|    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+266:85|    matrix_lr = float(os.environ.get("MATRIX_LR", 0.026))
+267:8e|    scalar_lr = float(os.environ.get("SCALAR_LR", 0.02))
+268:7d|    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.97))
+269:09|    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
+270:34|    muon_momentum_warmup_start = float(
+271:4e|        os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92)
+272:5c|    )
+273:9d|    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+274:17|    muon_row_normalize = bool(int(os.environ.get("MUON_ROW_NORMALIZE", "1")))
+275:83|    beta1 = float(os.environ.get("BETA1", 0.9))
+276:0a|    beta2 = float(os.environ.get("BETA2", 0.99))
+277:05|    adam_eps = float(os.environ.get("ADAM_EPS", 1e-08))
+278:ce|    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
+279:d8|    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+280:53|    adam_wd = float(os.environ.get("ADAM_WD", 0.02))
+281:43|    muon_wd = float(os.environ.get("MUON_WD", 0.095))
+282:82|    embed_wd = float(os.environ.get("EMBED_WD", 0.085))
+283:3b|    ema_decay = float(os.environ.get("EMA_DECAY", 0.9965))
+284:37|    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "1")))
+285:b8|    ttt_lora_rank = int(os.environ.get("TTT_LORA_RANK", 80))
+286:7c|    ttt_lora_lr = float(os.environ.get("TTT_LORA_LR", 0.0001))
+287:86|    ttt_chunk_size = int(os.environ.get("TTT_CHUNK_SIZE", 48))
+288:94|    ttt_eval_seq_len = int(os.environ.get("TTT_EVAL_SEQ_LEN", 2048))
+289:ac|    ttt_batch_size = int(os.environ.get("TTT_BATCH_SIZE", 64))
+290:23|    ttt_grad_steps = int(os.environ.get("TTT_GRAD_STEPS", 1))
+291:e9|    ttt_weight_decay = float(os.environ.get("TTT_WEIGHT_DECAY", 0.5))
+292:9e|    ttt_beta1 = float(os.environ.get("TTT_BETA1", 0))
+293:75|    ttt_beta2 = float(os.environ.get("TTT_BETA2", 0.99))
+294:b9|    ttt_k_lora = bool(int(os.environ.get("TTT_K_LORA", "1")))
+295:7c|    ttt_mlp_lora = bool(int(os.environ.get("TTT_MLP_LORA", "1")))
+296:34|    ttt_o_lora = bool(int(os.environ.get("TTT_O_LORA", "1")))
+297:26|    ttt_optimizer = os.environ.get("TTT_OPTIMIZER", "adam")
+298:00|    ttt_eval_batches = os.environ.get("TTT_EVAL_BATCHES", "")
+299:e9|    val_doc_fraction = float(os.environ.get("VAL_DOC_FRACTION", 1.0))
+300:c2|    compressor = os.environ.get("COMPRESSOR", "pergroup")
+301:23|    gptq_calibration_batches = int(os.environ.get("GPTQ_CALIBRATION_BATCHES", 16))
+302:e7|    gptq_reserve_seconds = float(os.environ.get("GPTQ_RESERVE_SECONDS", 0.5))
+303:0a|    phased_ttt_prefix_docs = int(os.environ.get("PHASED_TTT_PREFIX_DOCS", 2500))
+304:2a|    phased_ttt_num_phases = int(os.environ.get("PHASED_TTT_NUM_PHASES", 3))
+305:20|    global_ttt_lr = float(os.environ.get("GLOBAL_TTT_LR", 0.001))
+306:61|    global_ttt_momentum = float(os.environ.get("GLOBAL_TTT_MOMENTUM", 0.9))
+307:75|    global_ttt_epochs = int(os.environ.get("GLOBAL_TTT_EPOCHS", 1))
+308:13|    global_ttt_chunk_tokens = int(os.environ.get("GLOBAL_TTT_CHUNK_TOKENS", 32768))
+309:25|    global_ttt_batch_seqs = int(os.environ.get("GLOBAL_TTT_BATCH_SEQS", 32))
+310:e8|    global_ttt_warmup_start_lr = float(
+311:25|        os.environ.get("GLOBAL_TTT_WARMUP_START_LR", 0.0)
+312:5c|    )
+313:cc|    global_ttt_warmup_chunks = int(os.environ.get("GLOBAL_TTT_WARMUP_CHUNKS", 0))
+314:0f|    global_ttt_grad_clip = float(os.environ.get("GLOBAL_TTT_GRAD_CLIP", 1.0))
+315:f3|    global_ttt_respect_doc_boundaries = bool(
+316:fc|        int(os.environ.get("GLOBAL_TTT_RESPECT_DOC_BOUNDARIES", "1"))
+317:5c|    )
+318:15|    matrix_bits = int(os.environ.get("MATRIX_BITS", 6))
+319:59|    embed_bits = int(os.environ.get("EMBED_BITS", 7))
+320:c1|    matrix_clip_sigmas = float(os.environ.get("MATRIX_CLIP_SIGMAS", 12.85))
+321:fa|    embed_clip_sigmas = float(os.environ.get("EMBED_CLIP_SIGMAS", 14.0))
+322:31|    mlp_clip_sigmas = float(os.environ.get("MLP_CLIP_SIGMAS", 11.5))
+323:4f|    attn_clip_sigmas = float(os.environ.get("ATTN_CLIP_SIGMAS", 13.0))
+324:ea|    attn_out_gate_enabled = bool(int(os.environ.get("ATTN_OUT_GATE_ENABLED", "0")))
+
+... (3498 more lines)
+2026-05-05 03:07:03,815 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'output_mode': 'content', 'path': 'main.py', 'pattern': 'lqer'})
+2026-05-05 03:07:03,816 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=9098 response_tokens=37 total=9135
+2026-05-05 03:07:03,817 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'lqer', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:07:03,825 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Matches for 'lqer':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:336:     lqer_enabled = bool(int(os.environ.get("LQER_ENABLED", "1")))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:337:     lqer_rank = int(os.environ.get("LQER_RANK", 4))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:338:     lqer_top_k = int(os.environ.get("LQER_TOP_K", 3))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:339:     lqer_als_iters = int(os.environ.get("LQER_ALS_ITERS", 2))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:340:     lqer_factor_bits = int(os.environ.get("LQER_FACTOR_BITS", 4))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:341:     lqer_asym_enabled = bool(int(os.environ.get("LQER_ASYM_ENABLED", "1")))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:342:     lqer_asym_group = int(os.environ.get("LQER_ASYM_GROUP", "64"))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2186: def _lqer_pack(A, B, bits):
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2195: def _lqer_pack_asym(A, B, g=64):
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2213:     lqer_on = bool(getattr(h, "lqer_enabled", False))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2214:     lqer_cands = {}
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2250:         if lqer_on:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2253:             lqer_cands[name] = (E, float(E.norm()))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2254:     if lqer_on and lqer_cands:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2255:         top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2256:         asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2257:         asym_g = int(getattr(h, "lqer_asym_group", 64))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2272:             r = min(h.lqer_rank, S.numel())
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2278:             iters = getattr(h, "lqer_als_iters", 2)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2311:                 qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2316:                 meta[name] = meta[name] + "+lqer_asym"
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2318:                 qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2323:                 meta[name] = meta[name] + "+lqer"
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2360:         if "lqer_asym" in info:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2371:         elif "lqer" in info:
+2026-05-05 03:07:03,826 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #9] Sending request to model (step 9)...
+2026-05-05 03:07:03,826 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Matches for 'lqer':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:336:     lqer_enabled = bool(int(os.environ.get("LQER_ENABLED", "1")))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:337:     lqer_rank = int(os.environ.get("LQER_RANK", 4))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:338:     lqer_top_k = int(os.environ.get("LQER_TOP_K", 3))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:339:     lqer_als_iters = int(os.environ.get("LQER_ALS_ITERS", 2))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:340:     lqer_factor_bits = int(os.environ.get("LQER_FACTOR_BITS", 4))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:341:     lqer_asym_enabled = bool(int(os.environ.get("LQER_ASYM_ENABLED", "1")))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:342:     lqer_asym_group = int(os.environ.get("LQER_ASYM_GROUP", "64"))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2186: def _lqer_pack(A, B, bits):
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2195: def _lqer_pack_asym(A, B, g=64):
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2213:     lqer_on = bool(getattr(h, "lqer_enabled", False))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2214:     lqer_cands = {}
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2250:         if lqer_on:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2253:             lqer_cands[name] = (E, float(E.norm()))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2254:     if lqer_on and lqer_cands:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2255:         top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2256:         asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2257:         asym_g = int(getattr(h, "lqer_asym_group", 64))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2272:             r = min(h.lqer_rank, S.numel())
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2278:             iters = getattr(h, "lqer_als_iters", 2)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2311:                 qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2316:                 meta[name] = meta[name] + "+lqer_asym"
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2318:                 qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2323:                 meta[name] = meta[name] + "+lqer"
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2360:         if "lqer_asym" in info:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py:2371:         elif "lqer" in info:
+2026-05-05 03:07:07,563 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'path': 'main.py', 'offset': 2260, 'limit': 50})
+2026-05-05 03:07:07,564 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=12034 response_tokens=130 total=12164
+2026-05-05 03:07:07,564 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 2260, 'limit': 50}
+2026-05-05 03:07:07,568 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+
+... (1512 more lines)
+2026-05-05 03:07:07,570 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #10] Sending request to model (step 10)...
+2026-05-05 03:07:07,570 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+
+... (1512 more lines)
+2026-05-05 03:07:14,240 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'completed', 'todo_id': '78be0df1'})
+2026-05-05 03:07:14,240 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=13204 response_tokens=614 total=13818
+2026-05-05 03:07:14,241 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '78be0df1', 'status': 'completed'}
+2026-05-05 03:07:14,241 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Read main.py and find the scaling logic related to H_diag_sqrt and E' status to 'completed'
+2026-05-05 03:07:14,242 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #11] Sending request to model (step 11)...
+2026-05-05 03:07:14,242 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Read main.py and find the scaling logic related to H_diag_sqrt and E' status to 'completed'
+2026-05-05 03:07:17,748 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] add_todo({'active_form': 'Modifying main.py to remove H_diag_sqrt scaling', 'content': 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling'})
+2026-05-05 03:07:17,748 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=14901 response_tokens=74 total=14975
+2026-05-05 03:07:17,749 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] add_todo | args: {'content': 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling', 'active_form': 'Modifying main.py to remove H_diag_sqrt scaling'}
+2026-05-05 03:07:17,749 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] add_todo | result: Added todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' with ID: d2045a26
+2026-05-05 03:07:17,750 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #12] Sending request to model (step 12)...
+2026-05-05 03:07:17,750 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Added todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' with ID: d2045a26
+2026-05-05 03:07:20,530 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'in_progress', 'todo_id': 'd2045a26'})
+2026-05-05 03:07:20,530 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=13564 response_tokens=34 total=13598
+2026-05-05 03:07:20,531 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': 'd2045a26', 'status': 'in_progress'}
+2026-05-05 03:07:20,531 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' status to 'in_progress'
+2026-05-05 03:07:20,532 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #13] Sending request to model (step 13)...
+2026-05-05 03:07:20,532 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' status to 'in_progress'
+2026-05-05 03:07:25,661 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] hashline_edit({'start_line': 2270, 'end_hash': '9d', 'end_line': 2276, 'start_hash': '2a', 'path': 'main.py', 'new_content': '            E_prime = E\n            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)\n            r = min(h.lqer_rank, S.numel())\n            sqrt_S = torch.sqrt(S[:r])\n            A = (U[:, :r] * sqrt_S).contiguous()\n            B = (Vh[:r, :].T * sqrt_S).T.contiguous()'})
+2026-05-05 03:07:25,662 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=13643 response_tokens=281 total=13924
+2026-05-05 03:07:25,662 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] hashline_edit | args: {'path': 'main.py', 'start_line': 2270, 'start_hash': '2a', 'new_content': '            E_prime = E\n            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)\n            r = min(h.lqer_rank, S.numel())\n            sqrt_S = torch.sqrt(S[:r])\n            A = (U[:, :r] * sqrt_S).contiguous()\n            B = (Vh[:r, :].T * sqrt_S).T.contiguous()', 'end_line': 2276, 'end_hash': '9d', 'insert_after': False}
+2026-05-05 03:07:25,689 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] hashline_edit | result: Edited /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py: Replaced 7 line(s) with 6 line(s) at line 2270
+2026-05-05 03:07:25,690 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #14] Sending request to model (step 14)...
+2026-05-05 03:07:25,690 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Edited /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/1_unweighted_svd_init/main.py: Replaced 7 line(s) with 6 line(s) at line 2270
+2026-05-05 03:07:28,622 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 2260, 'limit': 50, 'path': 'main.py'})
+2026-05-05 03:07:28,622 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=13951 response_tokens=26 total=13977
+2026-05-05 03:07:28,623 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 2260, 'limit': 50}
+2026-05-05 03:07:28,632 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:52|            E_prime = E
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:da|            B = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:bc|            
+2277:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2278:91|            if iters > 0:
+2279:22|                L = torch.linalg.cholesky(H)
+2280:e3|                L_inv = torch.linalg.inv(L)
+2281:d7|                if "tok_emb" in name:
+2282:e3|                    cs = h.embed_clip_sigmas
+2283:b5|                elif ".mlp." in name:
+2284:cf|                    cs = h.mlp_clip_sigmas
+2285:4c|                elif ".attn." in name:
+2286:bd|                    cs = h.attn_clip_sigmas
+2287:1c|                else:
+2288:1d|                    cs = h.matrix_clip_sigmas
+2289:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2290:5f|                clip_range = 2 ** (bits - 1) - 1
+2291:a9|                
+2292:54|                for _ in range(iters):
+2293:83|                    W_target = t_orig.float() - A @ B
+2294:2f|                    q, s = gptq_quantize_weight(
+2295:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2296:15|                    )
+2297:da|                    W_q = q.float() * s.float().view(-1, 1)
+2298:e3|                    E_new = t_orig.float() - W_q
+2299:df|                    E_weighted = E_new @ L
+2300:7b|                    
+2301:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2302:c1|                    sqrt_S = torch.sqrt(S[:r])
+2303:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2304:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2305:f1|                    B = (B_w @ L_inv).contiguous()
+2306:7b|                    
+2307:1b|                result[name + ".q"] = q
+2308:66|                result[name + ".scale"] = s
+2309:7a|            if asym_on and B.numel() % asym_g == 0:
+2310:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+
+... (1511 more lines)
+2026-05-05 03:07:28,634 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #15] Sending request to model (step 15)...
+2026-05-05 03:07:28,634 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:52|            E_prime = E
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:da|            B = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:bc|            
+2277:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2278:91|            if iters > 0:
+2279:22|                L = torch.linalg.cholesky(H)
+2280:e3|                L_inv = torch.linalg.inv(L)
+2281:d7|                if "tok_emb" in name:
+2282:e3|                    cs = h.embed_clip_sigmas
+2283:b5|                elif ".mlp." in name:
+2284:cf|                    cs = h.mlp_clip_sigmas
+2285:4c|                elif ".attn." in name:
+2286:bd|                    cs = h.attn_clip_sigmas
+2287:1c|                else:
+2288:1d|                    cs = h.matrix_clip_sigmas
+2289:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2290:5f|                clip_range = 2 ** (bits - 1) - 1
+2291:a9|                
+2292:54|                for _ in range(iters):
+2293:83|                    W_target = t_orig.float() - A @ B
+2294:2f|                    q, s = gptq_quantize_weight(
+2295:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2296:15|                    )
+2297:da|                    W_q = q.float() * s.float().view(-1, 1)
+2298:e3|                    E_new = t_orig.float() - W_q
+2299:df|                    E_weighted = E_new @ L
+2300:7b|                    
+2301:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2302:c1|                    sqrt_S = torch.sqrt(S[:r])
+2303:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2304:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2305:f1|                    B = (B_w @ L_inv).contiguous()
+2306:7b|                    
+2307:1b|                result[name + ".q"] = q
+2308:66|                result[name + ".scale"] = s
+2309:7a|            if asym_on and B.numel() % asym_g == 0:
+2310:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+
+... (1511 more lines)
+2026-05-05 03:07:31,879 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': 'd2045a26', 'status': 'completed'})
+2026-05-05 03:07:31,879 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=15080 response_tokens=33 total=15113
+2026-05-05 03:07:31,880 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': 'd2045a26', 'status': 'completed'}
+2026-05-05 03:07:31,880 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' status to 'completed'
+2026-05-05 03:07:31,881 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #16] Sending request to model (step 16)...
+2026-05-05 03:07:31,881 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling' status to 'completed'
+2026-05-05 03:07:35,112 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] add_todo({'active_form': 'Running experiment with ablated main.py', 'content': 'Run the experiment to ensure the ablation works correctly'})
+2026-05-05 03:07:35,114 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=15172 response_tokens=39 total=15211
+2026-05-05 03:07:35,116 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] add_todo | args: {'content': 'Run the experiment to ensure the ablation works correctly', 'active_form': 'Running experiment with ablated main.py'}
+2026-05-05 03:07:35,116 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] add_todo | result: Added todo 'Run the experiment to ensure the ablation works correctly' with ID: 85aaf2fb
+2026-05-05 03:07:35,118 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #17] Sending request to model (step 17)...
+2026-05-05 03:07:35,118 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Added todo 'Run the experiment to ensure the ablation works correctly' with ID: 85aaf2fb
+2026-05-05 03:07:38,280 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'in_progress', 'todo_id': '85aaf2fb'})
+2026-05-05 03:07:38,280 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=15273 response_tokens=31 total=15304
+2026-05-05 03:07:38,281 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '85aaf2fb', 'status': 'in_progress'}
+2026-05-05 03:07:38,281 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run the experiment to ensure the ablation works correctly' status to 'in_progress'
+2026-05-05 03:07:38,282 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #18] Sending request to model (step 18)...
+2026-05-05 03:07:38,282 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Run the experiment to ensure the ablation works correctly' status to 'in_progress'
+2026-05-05 03:07:41,259 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] run_experiment({'main_script_path': 'main.py', 'env': {'ITERATIONS': '50', 'MAX_WALLCLOCK_SECONDS': '60', 'WARMUP_STEPS': '10'}})
+2026-05-05 03:07:41,259 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=15356 response_tokens=93 total=15449
+2026-05-05 03:07:41,260 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] run_experiment | args: {'main_script_path': 'main.py', 'env': {'ITERATIONS': '50', 'MAX_WALLCLOCK_SECONDS': '60', 'WARMUP_STEPS': '10'}}
+2026-05-05 03:43:16,262 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:43:16,263 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:43:21,192 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] run_experiment | result: Run 1/3
+Status: ERROR (TimeoutError: Evaluation should not take more than 10 minutes.)
+val_bpb: 2.49147043
+Artifact size: 15.72 MB (limit: 16.00 MB)
+Execution time: 2135s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/10
+warmup_step: 2/10
+warmup_step: 3/10
+warmup_step: 4/10
+warmup_step: 5/10
+warmup_step: 6/10
+warmup_step: 10/10
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/10
+loop_warmup_step: 2/10
+loop_warmup_step: 3/10
+loop_warmup_step: 4/10
+loop_warmup_step: 5/10
+loop_warmup_step: 6/10
+loop_warmup_step: 10/10
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17132361
+2/50 train_loss: 12.8152 train_time: 0.0m tok/s: 7443791
+3/50 train_loss: 10.1934 train_time: 0.0m tok/s: 7731692
+4/50 train_loss: 8.6349 train_time: 0.0m tok/s: 7864337
+5/50 train_loss: 7.8469 train_time: 0.0m tok/s: 7940165
+50/50 val_loss: 4.2904 val_bpb: 1.9604
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.83408618 val_bpb:3.57963922 eval_time:11337ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 128.7s
+Serialized model quantized+pergroup: 15688414 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+diagnostic quantized val_loss:7.83583227 val_bpb:3.58043706 eval_time:150108ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+ttt_compile_warmup: done in 262.9s
+
+Training Execution Time: 1351.1431000232697 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.7s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (128.2s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b781/782 bl:4.8689 bb:2.3823 rl:4.8689 rb:2.3823 dl:17258-30330 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:273.4s
+tttg: c1/131 lr:0.001000 t:4.3s
+tttg: c2/131 lr:0.001000 t:4.3s
+tttg: c3/131 lr:0.000999 t:4.4s
+tttg: c4/131 lr:0.000999 t:4.5s
+tttg: c5/131 lr:0.000998 t:4.6s
+tttg: c6/131 lr:0.000996 t:4.7s
+tttg: c7/131 lr:0.000995 t:4.8s
+tttg: c8/131 lr:0.000993 t:4.9s
+tttg: c9/131 lr:0.000991 t:5.0s
+tttg: c10/131 lr:0.000988 t:5.1s
+tttg: c11/131 lr:0.000985 t:5.2s
+tttg: c12/131 lr:0.000982 t:5.3s
+tttg: c13/131 lr:0.000979 t:5.4s
+tttg: c14/131 lr:0.000976 t:5.4s
+tttg: c15/131 lr:0.000972 t:5.5s
+tttg: c16/131 lr:0.000968 t:5.6s
+tttg: c17/131 lr:0.000963 t:5.7s
+tttg: c18/131 lr:0.000958 t:5.8s
+tttg: c19/131 lr:0.000953 t:5.9s
+tttg: c20/131 lr:0.000948 t:6.0s
+tttg: c21/131 lr:0.000943 t:6.1s
+tttg: c22/131 lr:0.000937 t:6.2s
+tttg: c23/131 lr:0.000931 t:6.3s
+tttg: c24/131 lr:0.000925 t:6.4s
+tttg: c25/131 lr:0.000918 t:6.5s
+tttg: c26/131 lr:0.000911 t:6.5s
+tttg: c27/131 lr:0.000905 t:6.6s
+tttg: c28/131 lr:0.000897 t:6.7s
+tttg: c29/131 lr:0.000890 t:6.8s
+tttg: c30/131 lr:0.000882 t:6.9s
+tttg: c31/131 lr:0.000874 t:7.0s
+tttg: c32/131 lr:0.000866 t:7.1s
+tttg: c33/131 lr:0.000858 t:7.2s
+tttg: c34/131 lr:0.000849 t:7.3s
+tttg: c35/131 lr:0.000841 t:7.4s
+tttg: c36/131 lr:0.000832 t:7.5s
+tttg: c37/131 lr:0.000822 t:7.6s
+tttg: c38/131 lr:0.000813 t:7.7s
+tttg: c39/131 lr:0.000804 t:7.8s
+tttg: c40/131 lr:0.000794 t:7.9s
+tttg: c41/131 lr:0.000784 t:8.0s
+tttg: c42/131 lr:0.000774 t:8.1s
+tttg: c43/131 lr:0.000764 t:8.2s
+tttg: c44/131 lr:0.000753 t:8.3s
+tttg: c45/131 lr:0.000743 t:8.3s
+tttg: c46/131 lr:0.000732 t:8.4s
+tttg: c47/131 lr:0.000722 t:8.5s
+tttg: c48/131 lr:0.000711 t:8.6s
+tttg: c49/131 lr:0.000700 t:8.7s
+tttg: c50/131 lr:0.000689 t:8.8s
+tttg: c51/131 lr:0.000677 t:8.9s
+tttg: c52/131 lr:0.000666 t:9.0s
+tttg: c53/131 lr:0.000655 t:9.1s
+tttg: c54/131 lr:0.000643 t:9.2s
+tttg: c55/131 lr:0.000631 t:9.3s
+tttg: c56/131 lr:0.000620 t:9.4s
+tttg: c57/131 lr:0.000608 t:9.4s
+tttg: c58/131 lr:0.000596 t:9.5s
+tttg: c59/131 lr:0.000584 t:9.6s
+tttg: c60/131 lr:0.000572 t:9.7s
+tttg: c61/131 lr:0.000560 t:9.8s
+tttg: c62/131 lr:0.000548 t:9.9s
+tttg: c63/131 lr:0.000536 t:10.0s
+tttg: c64/131 lr:0.000524 t:10.1s
+tttg: c65/131 lr:0.000512 t:10.2s
+tttg: c66/131 lr:0.000500 t:10.3s
+tttg: c67/131 lr:0.000488 t:10.4s
+tttg: c68/131 lr:0.000
+ ... [295 characters truncated] ... 
+5.4405 bb:2.4141 rl:5.3100 rb:2.4437 dl:915-918 gd:1
+ttp: b532/782 bl:5.4880 bb:2.4511 rl:5.3122 rb:2.4438 dl:887-889 gd:1
+ttp: b524/782 bl:5.4891 bb:2.4661 rl:5.3143 rb:2.4441 dl:863-866 gd:1
+ttp: b515/782 bl:5.4303 bb:2.4180 rl:5.3157 rb:2.4438 dl:838-841 gd:1
+ttp: b508/782 bl:5.4773 bb:2.4081 rl:5.3175 rb:2.4434 dl:817-820 gd:1
+ttp: b499/782 bl:5.4213 bb:2.4479 rl:5.3186 rb:2.4434 dl:794-796 gd:1
+ttp: b492/782 bl:5.4125 bb:2.4582 rl:5.3196 rb:2.4436 dl:776-778 gd:1
+ttp: b484/782 bl:5.4998 bb:2.4370 rl:5.3214 rb:2.4435 dl:756-759 gd:1
+ttp: b477/782 bl:5.5589 bb:2.3940 rl:5.3236 rb:2.4430 dl:740-742 gd:1
+ttp: b470/782 bl:5.4905 bb:2.4710 rl:5.3252 rb:2.4433 dl:724-726 gd:1
+ttp: b463/782 bl:5.4379 bb:2.4470 rl:5.3262 rb:2.4433 dl:708-710 gd:1
+ttp: b456/782 bl:5.4898 bb:2.4317 rl:5.3277 rb:2.4432 dl:693-695 gd:1
+ttp: b448/782 bl:5.4723 bb:2.3857 rl:5.3289 rb:2.4427 dl:677-678 gd:1
+ttp: b442/782 bl:5.3897 bb:2.4596 rl:5.3294 rb:2.4428 dl:664-666 gd:1
+ttp: b436/782 bl:5.4136 bb:2.5006 rl:5.3301 rb:2.4433 dl:651-653 gd:1
+ttp: b429/782 bl:5.4237 bb:2.4737 rl:5.3308 rb:2.4435 dl:638-640 gd:1
+ttp: b421/782 bl:5.4908 bb:2.4040 rl:5.3320 rb:2.4432 dl:622-624 gd:1
+ttp: b413/782 bl:5.4758 bb:2.4541 rl:5.3331 rb:2.4433 dl:607-609 gd:1
+ttp: b405/782 bl:5.4785 bb:2.4585 rl:5.3341 rb:2.4434 dl:592-593 gd:1
+ttp: b397/782 bl:5.5190 bb:2.4477 rl:5.3354 rb:2.4434 dl:577-579 gd:1
+ttp: b389/782 bl:5.4109 bb:2.5627 rl:5.3359 rb:2.4442 dl:563-564 gd:1
+ttp: b382/782 bl:5.4453 bb:2.5727 rl:5.3366 rb:2.4450 dl:550-552 gd:1
+ttp: b375/782 bl:5.5008 bb:2.4533 rl:5.3377 rb:2.4451 dl:538-540 gd:1
+ttp: b368/782 bl:5.4524 bb:2.5394 rl:5.3384 rb:2.4456 dl:527-528 gd:1
+ttp: b360/782 bl:5.3972 bb:2.5249 rl:5.3387 rb:2.4461 dl:513-515 gd:1
+ttp: b352/782 bl:5.5521 bb:2.5124 rl:5.3399 rb:2.4465 dl:499-501 gd:1
+ttp: b344/782 bl:5.4913 bb:2.4472 rl:5.3408 rb:2.4465 dl:488-489 gd:1
+ttp: b336/782 bl:5.5525 bb:2.5023 rl:5.3419 rb:2.4468 dl:476-477 gd:1
+ttp: b307/782 bl:5.4450 bb:2.6323 rl:5.3424 rb:2.4476 dl:432-433 gd:1
+ttp: b299/782 bl:5.3860 bb:2.5578 rl:5.3426 rb:2.4481 dl:420-421 gd:1
+ttp: b291/782 bl:5.5489 bb:2.4810 rl:5.3436 rb:2.4483 dl:407-409 gd:1
+ttp: b283/782 bl:5.5261 bb:2.6277 rl:5.3444 rb:2.4491 dl:396-398 gd:1
+ttp: b276/782 bl:5.5341 bb:2.5580 rl:5.3452 rb:2.4495 dl:387-388 gd:1
+ttp: b268/782 bl:5.5973 bb:2.5572 rl:5.3462 rb:2.4500 dl:376-378 gd:1
+ttp: b260/782 bl:5.6080 bb:2.5550 rl:5.3473 rb:2.4504 dl:366-367 gd:1
+ttp: b252/782 bl:5.6148 bb:2.5166 rl:5.3483 rb:2.4507 dl:356-357 gd:1
+ttp: b244/782 bl:5.5994 bb:2.6644 rl:5.3493 rb:2.4515 dl:346-347 gd:1
+ttp: b236/782 bl:5.5130 bb:2.5372 rl:5.3499 rb:2.4518 dl:336-337 gd:1
+ttp: b228/782 bl:5.5530 bb:2.5853 rl:5.3506 rb:2.4522 dl:327-328 gd:1
+ttp: b220/782 bl:5.5699 bb:2.6355 rl:5.3514 rb:2.4528 dl:317-318 gd:1
+ttp: b212/782 bl:5.6441 bb:2.5765 rl:5.3523 rb:2.4533 dl:308-309 gd:1
+ttp: b204/782 bl:5.5635 bb:2.6104 rl:5.3530 rb:2.4537 dl:300-301 gd:1
+ttp: b196/782 bl:5.6402 bb:2.5738 rl:5.3539 rb:2.4541 dl:291-292 gd:1
+ttp: b189/782 bl:5.5202 bb:2.6044 rl:5.3544 rb:2.4546 dl:283-284 gd:1
+ttp: b182/782 bl:5.5404 bb:2.6342 rl:5.3550 rb:2.4551 dl:276-277 gd:1
+ttp: b175/782 bl:5.5271 bb:2.6707 rl:5.3555 rb:2.4557 dl:269-270 gd:1
+ttp: b169/782 bl:5.6024 bb:2.6331 rl:5.3562 rb:2.4561 dl:263-264 gd:1
+ttp: b163/782 bl:5.6280 bb:2.6515 rl:5.3569 rb:2.4567 dl:257-259 gd:1
+ttp: b157/782 bl:5.5413 bb:2.6540 rl:5.3574 rb:2.4572 dl:252-253 gd:1
+ttp: b150/782 bl:5.5482 bb:2.6343 rl:5.3579 rb:2.4576 dl:245-246 gd:1
+ttp: b144/782 bl:5.6185 bb:2.6408 rl:5.3585 rb:2.4580 dl:239-240 gd:1
+ttp: b136/782 bl:5.6370 bb:2.6505 rl:5.3592 rb:2.4585 dl:232-233 gd:1
+ttp: b130/782 bl:5.6569 bb:2.5923 rl:5.3599 rb:2.4588 dl:226-227 gd:1
+ttp: b121/782 bl:5.6217 bb:2.5657 rl:5.3605 rb:2.4591 dl:218-219 gd:1
+ttp: b114/782 bl:5.6150 bb:2.6038 rl:5.3610 rb:2.4594 dl:211-212 gd:1
+ttp: b106/782 bl:5.5950 bb:2.6932 rl:5.3615 rb:2.4598 dl:204-205 gd:1
+ttp: b98/782 bl:5.6876 bb:2.6688 rl:5.3622 rb:2.4603 dl:197-198 gd:1
+ttp: b91/782 bl:5.6724 bb:2.6587 rl:5.3628 rb:2.4606 dl:190-191 gd:1
+ttp: b83/782 bl:5.6122 bb:2.6486 rl:5.3633 rb:2.4610 dl:183-184 gd:1
+ttp: b74/782 bl:5.7320 bb:2.6600 rl:5.3639 rb:2.4613 dl:175-176 gd:1
+ttp: b65/782 bl:5.6093 bb:2.6605 rl:5.3644 rb:2.4617 dl:167-169 gd:1
+ttp: b58/782 bl:5.5743 bb:2.7054 rl:5.3647 rb:2.4620 dl:161-162 gd:1
+ttp: b50/782 bl:5.6151 bb:2.7211 rl:5.3651 rb:2.4624 dl:153-154 gd:1
+ttp: b42/782 bl:5.6491 bb:2.7508 rl:5.3655 rb:2.4628 dl:145-146 gd:1
+ttp: b31/782 bl:5.6007 bb:2.6568 rl:5.3658 rb:2.4631 dl:134-135 gd:1
+ttp: b23/782 bl:5.7734 bb:2.7116 rl:5.3664 rb:2.4634 dl:126-127 gd:1
+ttp: b15/782 bl:5.8019 bb:2.6944 rl:5.3669 rb:2.4637 dl:115-117 gd:1
+ttp: b7/782 bl:5.7912 bb:2.6064 rl:5.3673 rb:2.4638 dl:101-103 gd:1
+quantized_ttt_phased val_loss:5.45226082 val_bpb:2.49147043 eval_time:601684ms
+val_loss:5.45226082
+val_bpb:2.49147043
+total_eval_time:601.7s
+
+Evaluation Execution Time: 783.4599690437317 seconds
+
+
+STDERR:
+
+
+
+Fix the root cause shown above and re-run. 2 run(s) remaining.
+2026-05-05 03:43:21,193 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #19] Sending request to model (step 19)...
+2026-05-05 03:43:21,193 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Run 1/3
+Status: ERROR (TimeoutError: Evaluation should not take more than 10 minutes.)
+val_bpb: 2.49147043
+Artifact size: 15.72 MB (limit: 16.00 MB)
+Execution time: 2135s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/10
+warmup_step: 2/10
+warmup_step: 3/10
+warmup_step: 4/10
+warmup_step: 5/10
+warmup_step: 6/10
+warmup_step: 10/10
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/10
+loop_warmup_step: 2/10
+loop_warmup_step: 3/10
+loop_warmup_step: 4/10
+loop_warmup_step: 5/10
+loop_warmup_step: 6/10
+loop_warmup_step: 10/10
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17132361
+2/50 train_loss: 12.8152 train_time: 0.0m tok/s: 7443791
+3/50 train_loss: 10.1934 train_time: 0.0m tok/s: 7731692
+4/50 train_loss: 8.6349 train_time: 0.0m tok/s: 7864337
+5/50 train_loss: 7.8469 train_time: 0.0m tok/s: 7940165
+50/50 val_loss: 4.2904 val_bpb: 1.9604
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.83408618 val_bpb:3.57963922 eval_time:11337ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 128.7s
+Serialized model quantized+pergroup: 15688414 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+diagnostic quantized val_loss:7.83583227 val_bpb:3.58043706 eval_time:150108ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+ttt_compile_warmup: done in 262.9s
+
+Training Execution Time: 1351.1431000232697 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.7s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (128.2s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b781/782 bl:4.8689 bb:2.3823 rl:4.8689 rb:2.3823 dl:17258-30330 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:273.4s
+tttg: c1/131 lr:0.001000 t:4.3s
+tttg: c2/131 lr:0.001000 t:4.3s
+tttg: c3/131 lr:0.000999 t:4.4s
+tttg: c4/131 lr:0.000999 t:4.5s
+tttg: c5/131 lr:0.000998 t:4.6s
+tttg: c6/131 lr:0.000996 t:4.7s
+tttg: c7/131 lr:0.000995 t:4.8s
+tttg: c8/131 lr:0.000993 t:4.9s
+tttg: c9/131 lr:0.000991 t:5.0s
+tttg: c10/131 lr:0.000988 t:5.1s
+tttg: c11/131 lr:0.000985 t:5.2s
+tttg: c12/131 lr:0.000982 t:5.3s
+tttg: c13/131 lr:0.000979 t:5.4s
+tttg: c14/131 lr:0.000976 t:5.4s
+tttg: c15/131 lr:0.000972 t:5.5s
+tttg: c16/131 lr:0.000968 t:5.6s
+tttg: c17/131 lr:0.000963 t:5.7s
+tttg: c18/131 lr:0.000958 t:5.8s
+tttg: c19/131 lr:0.000953 t:5.9s
+tttg: c20/131 lr:0.000948 t:6.0s
+tttg: c21/131 lr:0.000943 t:6.1s
+tttg: c22/131 lr:0.000937 t:6.2s
+tttg: c23/131 lr:0.000931 t:6.3s
+tttg: c24/131 lr:0.000925 t:6.4s
+tttg: c25/131 lr:0.000918 t:6.5s
+tttg: c26/131 lr:0.000911 t:6.5s
+tttg: c27/131 lr:0.000905 t:6.6s
+tttg: c28/131 lr:0.000897 t:6.7s
+tttg: c29/131 lr:0.000890 t:6.8s
+tttg: c30/131 lr:0.000882 t:6.9s
+tttg: c31/131 lr:0.000874 t:7.0s
+tttg: c32/131 lr:0.000866 t:7.1s
+tttg: c33/131 lr:0.000858 t:7.2s
+tttg: c34/131 lr:0.000849 t:7.3s
+tttg: c35/131 lr:0.000841 t:7.4s
+tttg: c36/131 lr:0.000832 t:7.5s
+tttg: c37/131 lr:0.000822 t:7.6s
+tttg: c38/131 lr:0.000813 t:7.7s
+tttg: c39/131 lr:0.000804 t:7.8s
+tttg: c40/131 lr:0.000794 t:7.9s
+tttg: c41/131 lr:0.000784 t:8.0s
+tttg: c42/131 lr:0.000774 t:8.1s
+tttg: c43/131 lr:0.000764 t:8.2s
+tttg: c44/131 lr:0.000753 t:8.3s
+tttg: c45/131 lr:0.000743 t:8.3s
+tttg: c46/131 lr:0.000732 t:8.4s
+tttg: c47/131 lr:0.000722 t:8.5s
+tttg: c48/131 lr:0.000711 t:8.6s
+tttg: c49/131 lr:0.000700 t:8.7s
+tttg: c50/131 lr:0.000689 t:8.8s
+tttg: c51/131 lr:0.000677 t:8.9s
+tttg: c52/131 lr:0.000666 t:9.0s
+tttg: c53/131 lr:0.000655 t:9.1s
+tttg: c54/131 lr:0.000643 t:9.2s
+tttg: c55/131 lr:0.000631 t:9.3s
+tttg: c56/131 lr:0.000620 t:9.4s
+tttg: c57/131 lr:0.000608 t:9.4s
+tttg: c58/131 lr:0.000596 t:9.5s
+tttg: c59/131 lr:0.000584 t:9.6s
+tttg: c60/131 lr:0.000572 t:9.7s
+tttg: c61/131 lr:0.000560 t:9.8s
+tttg: c62/131 lr:0.000548 t:9.9s
+tttg: c63/131 lr:0.000536 t:10.0s
+tttg: c64/131 lr:0.000524 t:10.1s
+tttg: c65/131 lr:0.000512 t:10.2s
+tttg: c66/131 lr:0.000500 t:10.3s
+tttg: c67/131 lr:0.000488 t:10.4s
+tttg: c6
+ ... [309 characters truncated] ... 
+5.4405 bb:2.4141 rl:5.3100 rb:2.4437 dl:915-918 gd:1
+ttp: b532/782 bl:5.4880 bb:2.4511 rl:5.3122 rb:2.4438 dl:887-889 gd:1
+ttp: b524/782 bl:5.4891 bb:2.4661 rl:5.3143 rb:2.4441 dl:863-866 gd:1
+ttp: b515/782 bl:5.4303 bb:2.4180 rl:5.3157 rb:2.4438 dl:838-841 gd:1
+ttp: b508/782 bl:5.4773 bb:2.4081 rl:5.3175 rb:2.4434 dl:817-820 gd:1
+ttp: b499/782 bl:5.4213 bb:2.4479 rl:5.3186 rb:2.4434 dl:794-796 gd:1
+ttp: b492/782 bl:5.4125 bb:2.4582 rl:5.3196 rb:2.4436 dl:776-778 gd:1
+ttp: b484/782 bl:5.4998 bb:2.4370 rl:5.3214 rb:2.4435 dl:756-759 gd:1
+ttp: b477/782 bl:5.5589 bb:2.3940 rl:5.3236 rb:2.4430 dl:740-742 gd:1
+ttp: b470/782 bl:5.4905 bb:2.4710 rl:5.3252 rb:2.4433 dl:724-726 gd:1
+ttp: b463/782 bl:5.4379 bb:2.4470 rl:5.3262 rb:2.4433 dl:708-710 gd:1
+ttp: b456/782 bl:5.4898 bb:2.4317 rl:5.3277 rb:2.4432 dl:693-695 gd:1
+ttp: b448/782 bl:5.4723 bb:2.3857 rl:5.3289 rb:2.4427 dl:677-678 gd:1
+ttp: b442/782 bl:5.3897 bb:2.4596 rl:5.3294 rb:2.4428 dl:664-666 gd:1
+ttp: b436/782 bl:5.4136 bb:2.5006 rl:5.3301 rb:2.4433 dl:651-653 gd:1
+ttp: b429/782 bl:5.4237 bb:2.4737 rl:5.3308 rb:2.4435 dl:638-640 gd:1
+ttp: b421/782 bl:5.4908 bb:2.4040 rl:5.3320 rb:2.4432 dl:622-624 gd:1
+ttp: b413/782 bl:5.4758 bb:2.4541 rl:5.3331 rb:2.4433 dl:607-609 gd:1
+ttp: b405/782 bl:5.4785 bb:2.4585 rl:5.3341 rb:2.4434 dl:592-593 gd:1
+ttp: b397/782 bl:5.5190 bb:2.4477 rl:5.3354 rb:2.4434 dl:577-579 gd:1
+ttp: b389/782 bl:5.4109 bb:2.5627 rl:5.3359 rb:2.4442 dl:563-564 gd:1
+ttp: b382/782 bl:5.4453 bb:2.5727 rl:5.3366 rb:2.4450 dl:550-552 gd:1
+ttp: b375/782 bl:5.5008 bb:2.4533 rl:5.3377 rb:2.4451 dl:538-540 gd:1
+ttp: b368/782 bl:5.4524 bb:2.5394 rl:5.3384 rb:2.4456 dl:527-528 gd:1
+ttp: b360/782 bl:5.3972 bb:2.5249 rl:5.3387 rb:2.4461 dl:513-515 gd:1
+ttp: b352/782 bl:5.5521 bb:2.5124 rl:5.3399 rb:2.4465 dl:499-501 gd:1
+ttp: b344/782 bl:5.4913 bb:2.4472 rl:5.3408 rb:2.4465 dl:488-489 gd:1
+ttp: b336/782 bl:5.5525 bb:2.5023 rl:5.3419 rb:2.4468 dl:476-477 gd:1
+ttp: b307/782 bl:5.4450 bb:2.6323 rl:5.3424 rb:2.4476 dl:432-433 gd:1
+ttp: b299/782 bl:5.3860 bb:2.5578 rl:5.3426 rb:2.4481 dl:420-421 gd:1
+ttp: b291/782 bl:5.5489 bb:2.4810 rl:5.3436 rb:2.4483 dl:407-409 gd:1
+ttp: b283/782 bl:5.5261 bb:2.6277 rl:5.3444 rb:2.4491 dl:396-398 gd:1
+ttp: b276/782 bl:5.5341 bb:2.5580 rl:5.3452 rb:2.4495 dl:387-388 gd:1
+ttp: b268/782 bl:5.5973 bb:2.5572 rl:5.3462 rb:2.4500 dl:376-378 gd:1
+ttp: b260/782 bl:5.6080 bb:2.5550 rl:5.3473 rb:2.4504 dl:366-367 gd:1
+ttp: b252/782 bl:5.6148 bb:2.5166 rl:5.3483 rb:2.4507 dl:356-357 gd:1
+ttp: b244/782 bl:5.5994 bb:2.6644 rl:5.3493 rb:2.4515 dl:346-347 gd:1
+ttp: b236/782 bl:5.5130 bb:2.5372 rl:5.3499 rb:2.4518 dl:336-337 gd:1
+ttp: b228/782 bl:5.5530 bb:2.5853 rl:5.3506 rb:2.4522 dl:327-328 gd:1
+ttp: b220/782 bl:5.5699 bb:2.6355 rl:5.3514 rb:2.4528 dl:317-318 gd:1
+ttp: b212/782 bl:5.6441 bb:2.5765 rl:5.3523 rb:2.4533 dl:308-309 gd:1
+ttp: b204/782 bl:5.5635 bb:2.6104 rl:5.3530 rb:2.4537 dl:300-301 gd:1
+ttp: b196/782 bl:5.6402 bb:2.5738 rl:5.3539 rb:2.4541 dl:291-292 gd:1
+ttp: b189/782 bl:5.5202 bb:2.6044 rl:5.3544 rb:2.4546 dl:283-284 gd:1
+ttp: b182/782 bl:5.5404 bb:2.6342 rl:5.3550 rb:2.4551 dl:276-277 gd:1
+ttp: b175/782 bl:5.5271 bb:2.6707 rl:5.3555 rb:2.4557 dl:269-270 gd:1
+ttp: b169/782 bl:5.6024 bb:2.6331 rl:5.3562 rb:2.4561 dl:263-264 gd:1
+ttp: b163/782 bl:5.6280 bb:2.6515 rl:5.3569 rb:2.4567 dl:257-259 gd:1
+ttp: b157/782 bl:5.5413 bb:2.6540 rl:5.3574 rb:2.4572 dl:252-253 gd:1
+ttp: b150/782 bl:5.5482 bb:2.6343 rl:5.3579 rb:2.4576 dl:245-246 gd:1
+ttp: b144/782 bl:5.6185 bb:2.6408 rl:5.3585 rb:2.4580 dl:239-240 gd:1
+ttp: b136/782 bl:5.6370 bb:2.6505 rl:5.3592 rb:2.4585 dl:232-233 gd:1
+ttp: b130/782 bl:5.6569 bb:2.5923 rl:5.3599 rb:2.4588 dl:226-227 gd:1
+ttp: b121/782 bl:5.6217 bb:2.5657 rl:5.3605 rb:2.4591 dl:218-219 gd:1
+ttp: b114/782 bl:5.6150 bb:2.6038 rl:5.3610 rb:2.4594 dl:211-212 gd:1
+ttp: b106/782 bl:5.5950 bb:2.6932 rl:5.3615 rb:2.4598 dl:204-205 gd:1
+ttp: b98/782 bl:5.6876 bb:2.6688 rl:5.3622 rb:2.4603 dl:197-198 gd:1
+ttp: b91/782 bl:5.6724 bb:2.6587 rl:5.3628 rb:2.4606 dl:190-191 gd:1
+ttp: b83/782 bl:5.6122 bb:2.6486 rl:5.3633 rb:2.4610 dl:183-184 gd:1
+ttp: b74/782 bl:5.7320 bb:2.6600 rl:5.3639 rb:2.4613 dl:175-176 gd:1
+ttp: b65/782 bl:5.6093 bb:2.6605 rl:5.3644 rb:2.4617 dl:167-169 gd:1
+ttp: b58/782 bl:5.5743 bb:2.7054 rl:5.3647 rb:2.4620 dl:161-162 gd:1
+ttp: b50/782 bl:5.6151 bb:2.7211 rl:5.3651 rb:2.4624 dl:153-154 gd:1
+ttp: b42/782 bl:5.6491 bb:2.7508 rl:5.3655 rb:2.4628 dl:145-146 gd:1
+ttp: b31/782 bl:5.6007 bb:2.6568 rl:5.3658 rb:2.4631 dl:134-135 gd:1
+ttp: b23/782 bl:5.7734 bb:2.7116 rl:5.3664 rb:2.4634 dl:126-127 gd:1
+ttp: b15/782 bl:5.8019 bb:2.6944 rl:5.3669 rb:2.4637 dl:115-117 gd:1
+ttp: b7/782 bl:5.7912 bb:2.6064 rl:5.3673 rb:2.4638 dl:101-103 gd:1
+quantized_ttt_phased val_loss:5.45226082 val_bpb:2.49147043 eval_time:601684ms
+val_loss:5.45226082
+val_bpb:2.49147043
+total_eval_time:601.7s
+
+Evaluation Execution Time: 783.4599690437317 seconds
+
+
+STDERR:
+
+
+
+Fix the root cause shown above and re-run. 2 run(s) remaining.
+2026-05-05 03:43:26,706 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'path': 'main.py', 'pattern': 'Evaluation should not take more than 10 minutes', 'output_mode': 'content'})
+2026-05-05 03:43:26,706 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=22647 response_tokens=347 total=22994
+2026-05-05 03:43:26,706 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'Evaluation should not take more than 10 minutes', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:43:26,711 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: No matches for 'Evaluation should not take more than 10 minutes'
+2026-05-05 03:43:26,712 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #20] Sending request to model (step 20)...
+2026-05-05 03:43:26,712 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] No matches for 'Evaluation should not take more than 10 minutes'
+2026-05-05 03:43:29,610 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'path': 'main.py', 'pattern': 'TimeoutError', 'output_mode': 'content'})
+2026-05-05 03:43:29,610 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=22770 response_tokens=32 total=22802
+2026-05-05 03:43:29,611 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'TimeoutError', 'path': 'main.py', 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:43:29,614 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: No matches for 'TimeoutError'
+2026-05-05 03:43:29,615 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #21] Sending request to model (step 21)...
+2026-05-05 03:43:29,615 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] No matches for 'TimeoutError'
+2026-05-05 03:43:34,598 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] run_experiment({'main_script_path': 'main.py', 'env': {'WARMUP_STEPS': '10', 'ITERATIONS': '50', 'MAX_WALLCLOCK_SECONDS': '60'}})
+2026-05-05 03:43:34,598 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=22837 response_tokens=329 total=23166
+2026-05-05 03:43:34,599 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] run_experiment | args: {'main_script_path': 'main.py', 'env': {'WARMUP_STEPS': '10', 'ITERATIONS': '50', 'MAX_WALLCLOCK_SECONDS': '60'}}
+2026-05-05 04:04:16,641 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:04:16,642 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:04:27,674 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:04:27,674 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:06:26,861 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:06:26,862 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:06:32,333 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] run_experiment | result: Run 2/3
+Status: SUCCESS
+val_bpb: 2.49151489
+Artifact size: 15.72 MB (limit: 16.00 MB)
+Execution time: 1242s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/10
+warmup_step: 2/10
+warmup_step: 3/10
+warmup_step: 4/10
+warmup_step: 5/10
+warmup_step: 6/10
+warmup_step: 10/10
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/10
+loop_warmup_step: 2/10
+loop_warmup_step: 3/10
+loop_warmup_step: 4/10
+loop_warmup_step: 5/10
+loop_warmup_step: 6/10
+loop_warmup_step: 10/10
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17383291
+2/50 train_loss: 12.8153 train_time: 0.0m tok/s: 8231119
+3/50 train_loss: 10.1944 train_time: 0.0m tok/s: 8255435
+4/50 train_loss: 8.6355 train_time: 0.0m tok/s: 8259660
+5/50 train_loss: 7.8472 train_time: 0.0m tok/s: 8264506
+50/50 val_loss: 4.2966 val_bpb: 1.9632
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.83435334 val_bpb:3.57976129 eval_time:6357ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 134.1s
+Serialized model quantized+pergroup: 15689528 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+diagnostic quantized val_loss:7.83505431 val_bpb:3.58008159 eval_time:12465ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.6s
+ttt_compile_warmup: done in 153.8s
+
+Training Execution Time: 558.5439441204071 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.6s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (130.9s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b782/782 bl:4.6326 bb:2.1937 rl:4.6326 rb:2.1937 dl:30339-97114 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:245.7s
+tttg: c1/131 lr:0.001000 t:0.8s
+tttg: c2/131 lr:0.001000 t:0.9s
+tttg: c3/131 lr:0.000999 t:0.9s
+tttg: c4/131 lr:0.000999 t:1.0s
+tttg: c5/131 lr:0.000998 t:1.1s
+tttg: c6/131 lr:0.000996 t:1.2s
+tttg: c7/131 lr:0.000995 t:1.3s
+tttg: c8/131 lr:0.000993 t:1.4s
+tttg: c9/131 lr:0.000991 t:1.5s
+tttg: c10/131 lr:0.000988 t:1.6s
+tttg: c11/131 lr:0.000985 t:1.6s
+tttg: c12/131 lr:0.000982 t:1.7s
+tttg: c13/131 lr:0.000979 t:1.8s
+tttg: c14/131 lr:0.000976 t:1.9s
+tttg: c15/131 lr:0.000972 t:2.0s
+tttg: c16/131 lr:0.000968 t:2.1s
+tttg: c17/131 lr:0.000963 t:2.2s
+tttg: c18/131 lr:0.000958 t:2.3s
+tttg: c19/131 lr:0.000953 t:2.3s
+tttg: c20/131 lr:0.000948 t:2.4s
+tttg: c21/131 lr:0.000943 t:2.5s
+tttg: c22/131 lr:0.000937 t:2.6s
+tttg: c23/131 lr:0.000931 t:2.7s
+tttg: c24/131 lr:0.000925 t:2.8s
+tttg: c25/131 lr:0.000918 t:2.9s
+tttg: c26/131 lr:0.000911 t:2.9s
+tttg: c27/131 lr:0.000905 t:3.0s
+tttg: c28/131 lr:0.000897 t:3.1s
+tttg: c29/131 lr:0.000890 t:3.2s
+tttg: c30/131 lr:0.000882 t:3.3s
+tttg: c31/131 lr:0.000874 t:3.4s
+tttg: c32/131 lr:0.000866 t:3.5s
+tttg: c33/131 lr:0.000858 t:3.6s
+tttg: c34/131 lr:0.000849 t:3.6s
+tttg: c35/131 lr:0.000841 t:3.7s
+tttg: c36/131 lr:0.000832 t:3.8s
+tttg: c37/131 lr:0.000822 t:3.9s
+tttg: c38/131 lr:0.000813 t:4.0s
+tttg: c39/131 lr:0.000804 t:4.1s
+tttg: c40/131 lr:0.000794 t:4.2s
+tttg: c41/131 lr:0.000784 t:4.2s
+tttg: c42/131 lr:0.000774 t:4.3s
+tttg: c43/131 lr:0.000764 t:4.4s
+tttg: c44/131 lr:0.000753 t:4.5s
+tttg: c45/131 lr:0.000743 t:4.6s
+tttg: c46/131 lr:0.000732 t:4.7s
+tttg: c47/131 lr:0.000722 t:4.8s
+tttg: c48/131 lr:0.000711 t:4.8s
+tttg: c49/131 lr:0.000700 t:4.9s
+tttg: c50/131 lr:0.000689 t:5.0s
+tttg: c51/131 lr:0.000677 t:5.1s
+tttg: c52/131 lr:0.000666 t:5.2s
+tttg: c53/131 lr:0.000655 t:5.3s
+tttg: c54/131 lr:0.000643 t:5.4s
+tttg: c55/131 lr:0.000631 t:5.5s
+tttg: c56/131 lr:0.000620 t:5.5s
+tttg: c57/131 lr:0.000608 t:5.6s
+tttg: c58/131 lr:0.000596 t:5.7s
+tttg: c59/131 lr:0.000584 t:5.8s
+tttg: c60/131 lr:0.000572 t:5.9s
+tttg: c61/131 lr:0.000560 t:6.0s
+tttg: c62/131 lr:0.000548 t:6.1s
+tttg: c63/131 lr:0.000536 t:6.1s
+tttg: c64/131 lr:0.000524 t:6.2s
+tttg: c65/131 lr:0.000512 t:6.3s
+tttg: c66/131 lr:0.000500 t:6.4s
+tttg: c67/131 lr:0.000488 t:6.5s
+tttg: c68/131 lr:0.000476 t:6.6s
+tttg: c69/131 lr:0.000464 t:6.7s
+tttg: c70/131 lr:0.000452 t
+ ... [274 characters truncated] ... 
+l:952-955 gd:1
+ttp: b546/782 bl:5.4538 bb:2.4248 rl:5.2896 rb:2.4124 dl:930-934 gd:1
+ttp: b538/782 bl:5.4203 bb:2.4267 rl:5.2916 rb:2.4126 dl:905-909 gd:1
+ttp: b530/782 bl:5.4959 bb:2.4719 rl:5.2947 rb:2.4135 dl:882-884 gd:1
+ttp: b522/782 bl:5.4348 bb:2.4374 rl:5.2967 rb:2.4139 dl:858-860 gd:1
+ttp: b514/782 bl:5.4018 bb:2.4937 rl:5.2982 rb:2.4150 dl:835-838 gd:1
+ttp: b507/782 bl:5.4156 bb:2.4248 rl:5.2997 rb:2.4151 dl:814-817 gd:1
+ttp: b500/782 bl:5.4509 bb:2.4947 rl:5.3017 rb:2.4161 dl:796-799 gd:1
+ttp: b492/782 bl:5.4123 bb:2.4581 rl:5.3030 rb:2.4166 dl:776-778 gd:1
+ttp: b485/782 bl:5.4049 bb:2.4347 rl:5.3042 rb:2.4169 dl:759-761 gd:1
+ttp: b478/782 bl:5.4467 bb:2.5081 rl:5.3059 rb:2.4179 dl:742-744 gd:1
+ttp: b471/782 bl:5.4644 bb:2.4672 rl:5.3076 rb:2.4184 dl:726-728 gd:1
+ttp: b463/782 bl:5.4384 bb:2.4472 rl:5.3091 rb:2.4188 dl:708-710 gd:1
+ttp: b455/782 bl:5.4590 bb:2.4603 rl:5.3106 rb:2.4192 dl:691-693 gd:1
+ttp: b446/782 bl:5.3762 bb:2.5270 rl:5.3113 rb:2.4202 dl:672-674 gd:1
+ttp: b436/782 bl:5.4159 bb:2.5017 rl:5.3123 rb:2.4210 dl:651-653 gd:1
+ttp: b429/782 bl:5.4260 bb:2.4747 rl:5.3133 rb:2.4215 dl:638-640 gd:1
+ttp: b421/782 bl:5.4931 bb:2.4050 rl:5.3149 rb:2.4214 dl:622-624 gd:1
+ttp: b417/782 bl:5.4020 bb:2.4955 rl:5.3157 rb:2.4220 dl:615-617 gd:1
+ttp: b408/782 bl:5.3867 bb:2.5047 rl:5.3163 rb:2.4227 dl:597-598 gd:1
+ttp: b400/782 bl:5.4641 bb:2.4587 rl:5.3175 rb:2.4230 dl:582-584 gd:1
+ttp: b392/782 bl:5.3956 bb:2.4818 rl:5.3182 rb:2.4235 dl:568-570 gd:1
+ttp: b384/782 bl:5.4833 bb:2.4666 rl:5.3194 rb:2.4238 dl:554-555 gd:1
+ttp: b376/782 bl:5.5270 bb:2.4788 rl:5.3210 rb:2.4242 dl:540-542 gd:1
+ttp: b368/782 bl:5.4529 bb:2.5396 rl:5.3219 rb:2.4250 dl:527-528 gd:1
+ttp: b361/782 bl:5.4606 bb:2.5493 rl:5.3229 rb:2.4259 dl:515-517 gd:1
+ttp: b353/782 bl:5.4737 bb:2.5031 rl:5.3239 rb:2.4264 dl:501-503 gd:1
+ttp: b345/782 bl:5.4919 bb:2.5001 rl:5.3250 rb:2.4269 dl:489-491 gd:1
+ttp: b337/782 bl:5.5406 bb:2.5213 rl:5.3264 rb:2.4275 dl:477-478 gd:1
+ttp: b329/782 bl:5.4380 bb:2.5766 rl:5.3271 rb:2.4284 dl:465-466 gd:1
+ttp: b321/782 bl:5.4911 bb:2.5068 rl:5.3280 rb:2.4288 dl:453-455 gd:1
+ttp: b288/782 bl:5.4946 bb:2.5009 rl:5.3289 rb:2.4292 dl:403-405 gd:1
+ttp: b280/782 bl:5.5316 bb:2.5790 rl:5.3300 rb:2.4300 dl:392-394 gd:1
+ttp: b272/782 bl:5.5268 bb:2.5528 rl:5.3309 rb:2.4306 dl:382-383 gd:1
+ttp: b264/782 bl:5.5945 bb:2.5494 rl:5.3322 rb:2.4311 dl:371-372 gd:1
+ttp: b256/782 bl:5.6522 bb:2.4949 rl:5.3337 rb:2.4314 dl:361-362 gd:1
+ttp: b248/782 bl:5.5321 bb:2.6699 rl:5.3346 rb:2.4324 dl:351-352 gd:1
+ttp: b240/782 bl:5.5734 bb:2.5582 rl:5.3356 rb:2.4330 dl:341-342 gd:1
+ttp: b233/782 bl:5.4973 bb:2.6265 rl:5.3363 rb:2.4338 dl:333-334 gd:1
+ttp: b225/782 bl:5.5714 bb:2.5509 rl:5.3372 rb:2.4342 dl:323-324 gd:1
+ttp: b217/782 bl:5.5455 bb:2.6476 rl:5.3381 rb:2.4350 dl:314-315 gd:1
+ttp: b209/782 bl:5.5882 bb:2.6138 rl:5.3390 rb:2.4357 dl:305-306 gd:1
+ttp: b201/782 bl:5.5683 bb:2.6562 rl:5.3399 rb:2.4365 dl:297-298 gd:1
+ttp: b194/782 bl:5.6829 bb:2.6035 rl:5.3411 rb:2.4371 dl:289-290 gd:1
+ttp: b184/782 bl:5.4819 bb:2.5843 rl:5.3416 rb:2.4376 dl:278-279 gd:1
+ttp: b176/782 bl:5.5198 bb:2.6809 rl:5.3422 rb:2.4383 dl:270-271 gd:1
+ttp: b167/782 bl:5.7141 bb:2.5493 rl:5.3434 rb:2.4387 dl:262-263 gd:1
+ttp: b159/782 bl:5.6157 bb:2.6054 rl:5.3442 rb:2.4392 dl:254-255 gd:1
+ttp: b154/782 bl:5.5845 bb:2.7236 rl:5.3449 rb:2.4400 dl:249-250 gd:1
+ttp: b146/782 bl:5.5959 bb:2.6737 rl:5.3457 rb:2.4407 dl:241-242 gd:1
+ttp: b137/782 bl:5.5523 bb:2.6526 rl:5.3463 rb:2.4412 dl:233-233 gd:1
+ttp: b129/782 bl:5.5652 bb:2.6662 rl:5.3469 rb:2.4418 dl:225-226 gd:1
+ttp: b122/782 bl:5.5652 bb:2.6347 rl:5.3474 rb:2.4423 dl:219-219 gd:1
+ttp: b113/782 bl:5.8257 bb:2.5902 rl:5.3486 rb:2.4427 dl:210-211 gd:1
+ttp: b106/782 bl:5.5991 bb:2.6952 rl:5.3493 rb:2.4433 dl:204-205 gd:1
+ttp: b98/782 bl:5.6902 bb:2.6700 rl:5.3501 rb:2.4438 dl:197-198 gd:1
+ttp: b89/782 bl:5.6787 bb:2.6241 rl:5.3508 rb:2.4442 dl:189-190 gd:1
+ttp: b81/782 bl:5.6936 bb:2.5839 rl:5.3515 rb:2.4445 dl:182-183 gd:1
+ttp: b74/782 bl:5.7352 bb:2.6615 rl:5.3523 rb:2.4450 dl:175-176 gd:1
+ttp: b67/782 bl:5.6019 bb:2.6519 rl:5.3528 rb:2.4454 dl:169-170 gd:1
+ttp: b59/782 bl:5.6654 bb:2.6989 rl:5.3534 rb:2.4458 dl:162-163 gd:1
+ttp: b51/782 bl:5.6602 bb:2.7079 rl:5.3540 rb:2.4463 dl:154-155 gd:1
+ttp: b43/782 bl:5.6683 bb:2.7673 rl:5.3545 rb:2.4468 dl:146-147 gd:1
+ttp: b34/782 bl:5.7524 bb:2.6335 rl:5.3552 rb:2.4471 dl:137-138 gd:1
+ttp: b26/782 bl:5.5917 bb:2.7834 rl:5.3555 rb:2.4476 dl:129-130 gd:1
+ttp: b18/782 bl:5.8200 bb:2.6537 rl:5.3562 rb:2.4479 dl:119-121 gd:1
+ttp: b10/782 bl:5.7462 bb:2.5745 rl:5.3567 rb:2.4480 dl:107-109 gd:1
+ttp: b2/782 bl:5.9265 bb:2.6048 rl:5.3573 rb:2.4482 dl:83-89 gd:1
+quantized_ttt_phased val_loss:5.45235812 val_bpb:2.49151489 eval_time:500261ms
+val_loss:5.45235812
+val_bpb:2.49151489
+total_eval_time:500.3s
+
+Evaluation Execution Time: 683.120682477951 seconds
+
+
+STDERR:
+
+
+
+main.py is bug-free -- STOP and end your turn now. The official 3-seed averaged eval runs automatically.
+2026-05-05 04:06:32,335 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #22] Sending request to model (step 22)...
+2026-05-05 04:06:32,335 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Run 2/3
+Status: SUCCESS
+val_bpb: 2.49151489
+Artifact size: 15.72 MB (limit: 16.00 MB)
+Execution time: 1242s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/10
+warmup_step: 2/10
+warmup_step: 3/10
+warmup_step: 4/10
+warmup_step: 5/10
+warmup_step: 6/10
+warmup_step: 10/10
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/10
+loop_warmup_step: 2/10
+loop_warmup_step: 3/10
+loop_warmup_step: 4/10
+loop_warmup_step: 5/10
+loop_warmup_step: 6/10
+loop_warmup_step: 10/10
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17383291
+2/50 train_loss: 12.8153 train_time: 0.0m tok/s: 8231119
+3/50 train_loss: 10.1944 train_time: 0.0m tok/s: 8255435
+4/50 train_loss: 8.6355 train_time: 0.0m tok/s: 8259660
+5/50 train_loss: 7.8472 train_time: 0.0m tok/s: 8264506
+50/50 val_loss: 4.2966 val_bpb: 1.9632
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.83435334 val_bpb:3.57976129 eval_time:6357ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 134.1s
+Serialized model quantized+pergroup: 15689528 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.5s
+diagnostic quantized val_loss:7.83505431 val_bpb:3.58008159 eval_time:12465ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.6s
+ttt_compile_warmup: done in 153.8s
+
+Training Execution Time: 558.5439441204071 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 22.6s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (130.9s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b782/782 bl:4.6326 bb:2.1937 rl:4.6326 rb:2.1937 dl:30339-97114 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:245.7s
+tttg: c1/131 lr:0.001000 t:0.8s
+tttg: c2/131 lr:0.001000 t:0.9s
+tttg: c3/131 lr:0.000999 t:0.9s
+tttg: c4/131 lr:0.000999 t:1.0s
+tttg: c5/131 lr:0.000998 t:1.1s
+tttg: c6/131 lr:0.000996 t:1.2s
+tttg: c7/131 lr:0.000995 t:1.3s
+tttg: c8/131 lr:0.000993 t:1.4s
+tttg: c9/131 lr:0.000991 t:1.5s
+tttg: c10/131 lr:0.000988 t:1.6s
+tttg: c11/131 lr:0.000985 t:1.6s
+tttg: c12/131 lr:0.000982 t:1.7s
+tttg: c13/131 lr:0.000979 t:1.8s
+tttg: c14/131 lr:0.000976 t:1.9s
+tttg: c15/131 lr:0.000972 t:2.0s
+tttg: c16/131 lr:0.000968 t:2.1s
+tttg: c17/131 lr:0.000963 t:2.2s
+tttg: c18/131 lr:0.000958 t:2.3s
+tttg: c19/131 lr:0.000953 t:2.3s
+tttg: c20/131 lr:0.000948 t:2.4s
+tttg: c21/131 lr:0.000943 t:2.5s
+tttg: c22/131 lr:0.000937 t:2.6s
+tttg: c23/131 lr:0.000931 t:2.7s
+tttg: c24/131 lr:0.000925 t:2.8s
+tttg: c25/131 lr:0.000918 t:2.9s
+tttg: c26/131 lr:0.000911 t:2.9s
+tttg: c27/131 lr:0.000905 t:3.0s
+tttg: c28/131 lr:0.000897 t:3.1s
+tttg: c29/131 lr:0.000890 t:3.2s
+tttg: c30/131 lr:0.000882 t:3.3s
+tttg: c31/131 lr:0.000874 t:3.4s
+tttg: c32/131 lr:0.000866 t:3.5s
+tttg: c33/131 lr:0.000858 t:3.6s
+tttg: c34/131 lr:0.000849 t:3.6s
+tttg: c35/131 lr:0.000841 t:3.7s
+tttg: c36/131 lr:0.000832 t:3.8s
+tttg: c37/131 lr:0.000822 t:3.9s
+tttg: c38/131 lr:0.000813 t:4.0s
+tttg: c39/131 lr:0.000804 t:4.1s
+tttg: c40/131 lr:0.000794 t:4.2s
+tttg: c41/131 lr:0.000784 t:4.2s
+tttg: c42/131 lr:0.000774 t:4.3s
+tttg: c43/131 lr:0.000764 t:4.4s
+tttg: c44/131 lr:0.000753 t:4.5s
+tttg: c45/131 lr:0.000743 t:4.6s
+tttg: c46/131 lr:0.000732 t:4.7s
+tttg: c47/131 lr:0.000722 t:4.8s
+tttg: c48/131 lr:0.000711 t:4.8s
+tttg: c49/131 lr:0.000700 t:4.9s
+tttg: c50/131 lr:0.000689 t:5.0s
+tttg: c51/131 lr:0.000677 t:5.1s
+tttg: c52/131 lr:0.000666 t:5.2s
+tttg: c53/131 lr:0.000655 t:5.3s
+tttg: c54/131 lr:0.000643 t:5.4s
+tttg: c55/131 lr:0.000631 t:5.5s
+tttg: c56/131 lr:0.000620 t:5.5s
+tttg: c57/131 lr:0.000608 t:5.6s
+tttg: c58/131 lr:0.000596 t:5.7s
+tttg: c59/131 lr:0.000584 t:5.8s
+tttg: c60/131 lr:0.000572 t:5.9s
+tttg: c61/131 lr:0.000560 t:6.0s
+tttg: c62/131 lr:0.000548 t:6.1s
+tttg: c63/131 lr:0.000536 t:6.1s
+tttg: c64/131 lr:0.000524 t:6.2s
+tttg: c65/131 lr:0.000512 t:6.3s
+tttg: c66/131 lr:0.000500 t:6.4s
+tttg: c67/131 lr:0.000488 t:6.5s
+tttg: c68/131 lr:0.000476 t:6.6s
+tttg: c69/131 lr:0.000464 t:6.7s
+tttg: c70/131
+ ... [288 characters truncated] ... 
+l:952-955 gd:1
+ttp: b546/782 bl:5.4538 bb:2.4248 rl:5.2896 rb:2.4124 dl:930-934 gd:1
+ttp: b538/782 bl:5.4203 bb:2.4267 rl:5.2916 rb:2.4126 dl:905-909 gd:1
+ttp: b530/782 bl:5.4959 bb:2.4719 rl:5.2947 rb:2.4135 dl:882-884 gd:1
+ttp: b522/782 bl:5.4348 bb:2.4374 rl:5.2967 rb:2.4139 dl:858-860 gd:1
+ttp: b514/782 bl:5.4018 bb:2.4937 rl:5.2982 rb:2.4150 dl:835-838 gd:1
+ttp: b507/782 bl:5.4156 bb:2.4248 rl:5.2997 rb:2.4151 dl:814-817 gd:1
+ttp: b500/782 bl:5.4509 bb:2.4947 rl:5.3017 rb:2.4161 dl:796-799 gd:1
+ttp: b492/782 bl:5.4123 bb:2.4581 rl:5.3030 rb:2.4166 dl:776-778 gd:1
+ttp: b485/782 bl:5.4049 bb:2.4347 rl:5.3042 rb:2.4169 dl:759-761 gd:1
+ttp: b478/782 bl:5.4467 bb:2.5081 rl:5.3059 rb:2.4179 dl:742-744 gd:1
+ttp: b471/782 bl:5.4644 bb:2.4672 rl:5.3076 rb:2.4184 dl:726-728 gd:1
+ttp: b463/782 bl:5.4384 bb:2.4472 rl:5.3091 rb:2.4188 dl:708-710 gd:1
+ttp: b455/782 bl:5.4590 bb:2.4603 rl:5.3106 rb:2.4192 dl:691-693 gd:1
+ttp: b446/782 bl:5.3762 bb:2.5270 rl:5.3113 rb:2.4202 dl:672-674 gd:1
+ttp: b436/782 bl:5.4159 bb:2.5017 rl:5.3123 rb:2.4210 dl:651-653 gd:1
+ttp: b429/782 bl:5.4260 bb:2.4747 rl:5.3133 rb:2.4215 dl:638-640 gd:1
+ttp: b421/782 bl:5.4931 bb:2.4050 rl:5.3149 rb:2.4214 dl:622-624 gd:1
+ttp: b417/782 bl:5.4020 bb:2.4955 rl:5.3157 rb:2.4220 dl:615-617 gd:1
+ttp: b408/782 bl:5.3867 bb:2.5047 rl:5.3163 rb:2.4227 dl:597-598 gd:1
+ttp: b400/782 bl:5.4641 bb:2.4587 rl:5.3175 rb:2.4230 dl:582-584 gd:1
+ttp: b392/782 bl:5.3956 bb:2.4818 rl:5.3182 rb:2.4235 dl:568-570 gd:1
+ttp: b384/782 bl:5.4833 bb:2.4666 rl:5.3194 rb:2.4238 dl:554-555 gd:1
+ttp: b376/782 bl:5.5270 bb:2.4788 rl:5.3210 rb:2.4242 dl:540-542 gd:1
+ttp: b368/782 bl:5.4529 bb:2.5396 rl:5.3219 rb:2.4250 dl:527-528 gd:1
+ttp: b361/782 bl:5.4606 bb:2.5493 rl:5.3229 rb:2.4259 dl:515-517 gd:1
+ttp: b353/782 bl:5.4737 bb:2.5031 rl:5.3239 rb:2.4264 dl:501-503 gd:1
+ttp: b345/782 bl:5.4919 bb:2.5001 rl:5.3250 rb:2.4269 dl:489-491 gd:1
+ttp: b337/782 bl:5.5406 bb:2.5213 rl:5.3264 rb:2.4275 dl:477-478 gd:1
+ttp: b329/782 bl:5.4380 bb:2.5766 rl:5.3271 rb:2.4284 dl:465-466 gd:1
+ttp: b321/782 bl:5.4911 bb:2.5068 rl:5.3280 rb:2.4288 dl:453-455 gd:1
+ttp: b288/782 bl:5.4946 bb:2.5009 rl:5.3289 rb:2.4292 dl:403-405 gd:1
+ttp: b280/782 bl:5.5316 bb:2.5790 rl:5.3300 rb:2.4300 dl:392-394 gd:1
+ttp: b272/782 bl:5.5268 bb:2.5528 rl:5.3309 rb:2.4306 dl:382-383 gd:1
+ttp: b264/782 bl:5.5945 bb:2.5494 rl:5.3322 rb:2.4311 dl:371-372 gd:1
+ttp: b256/782 bl:5.6522 bb:2.4949 rl:5.3337 rb:2.4314 dl:361-362 gd:1
+ttp: b248/782 bl:5.5321 bb:2.6699 rl:5.3346 rb:2.4324 dl:351-352 gd:1
+ttp: b240/782 bl:5.5734 bb:2.5582 rl:5.3356 rb:2.4330 dl:341-342 gd:1
+ttp: b233/782 bl:5.4973 bb:2.6265 rl:5.3363 rb:2.4338 dl:333-334 gd:1
+ttp: b225/782 bl:5.5714 bb:2.5509 rl:5.3372 rb:2.4342 dl:323-324 gd:1
+ttp: b217/782 bl:5.5455 bb:2.6476 rl:5.3381 rb:2.4350 dl:314-315 gd:1
+ttp: b209/782 bl:5.5882 bb:2.6138 rl:5.3390 rb:2.4357 dl:305-306 gd:1
+ttp: b201/782 bl:5.5683 bb:2.6562 rl:5.3399 rb:2.4365 dl:297-298 gd:1
+ttp: b194/782 bl:5.6829 bb:2.6035 rl:5.3411 rb:2.4371 dl:289-290 gd:1
+ttp: b184/782 bl:5.4819 bb:2.5843 rl:5.3416 rb:2.4376 dl:278-279 gd:1
+ttp: b176/782 bl:5.5198 bb:2.6809 rl:5.3422 rb:2.4383 dl:270-271 gd:1
+ttp: b167/782 bl:5.7141 bb:2.5493 rl:5.3434 rb:2.4387 dl:262-263 gd:1
+ttp: b159/782 bl:5.6157 bb:2.6054 rl:5.3442 rb:2.4392 dl:254-255 gd:1
+ttp: b154/782 bl:5.5845 bb:2.7236 rl:5.3449 rb:2.4400 dl:249-250 gd:1
+ttp: b146/782 bl:5.5959 bb:2.6737 rl:5.3457 rb:2.4407 dl:241-242 gd:1
+ttp: b137/782 bl:5.5523 bb:2.6526 rl:5.3463 rb:2.4412 dl:233-233 gd:1
+ttp: b129/782 bl:5.5652 bb:2.6662 rl:5.3469 rb:2.4418 dl:225-226 gd:1
+ttp: b122/782 bl:5.5652 bb:2.6347 rl:5.3474 rb:2.4423 dl:219-219 gd:1
+ttp: b113/782 bl:5.8257 bb:2.5902 rl:5.3486 rb:2.4427 dl:210-211 gd:1
+ttp: b106/782 bl:5.5991 bb:2.6952 rl:5.3493 rb:2.4433 dl:204-205 gd:1
+ttp: b98/782 bl:5.6902 bb:2.6700 rl:5.3501 rb:2.4438 dl:197-198 gd:1
+ttp: b89/782 bl:5.6787 bb:2.6241 rl:5.3508 rb:2.4442 dl:189-190 gd:1
+ttp: b81/782 bl:5.6936 bb:2.5839 rl:5.3515 rb:2.4445 dl:182-183 gd:1
+ttp: b74/782 bl:5.7352 bb:2.6615 rl:5.3523 rb:2.4450 dl:175-176 gd:1
+ttp: b67/782 bl:5.6019 bb:2.6519 rl:5.3528 rb:2.4454 dl:169-170 gd:1
+ttp: b59/782 bl:5.6654 bb:2.6989 rl:5.3534 rb:2.4458 dl:162-163 gd:1
+ttp: b51/782 bl:5.6602 bb:2.7079 rl:5.3540 rb:2.4463 dl:154-155 gd:1
+ttp: b43/782 bl:5.6683 bb:2.7673 rl:5.3545 rb:2.4468 dl:146-147 gd:1
+ttp: b34/782 bl:5.7524 bb:2.6335 rl:5.3552 rb:2.4471 dl:137-138 gd:1
+ttp: b26/782 bl:5.5917 bb:2.7834 rl:5.3555 rb:2.4476 dl:129-130 gd:1
+ttp: b18/782 bl:5.8200 bb:2.6537 rl:5.3562 rb:2.4479 dl:119-121 gd:1
+ttp: b10/782 bl:5.7462 bb:2.5745 rl:5.3567 rb:2.4480 dl:107-109 gd:1
+ttp: b2/782 bl:5.9265 bb:2.6048 rl:5.3573 rb:2.4482 dl:83-89 gd:1
+quantized_ttt_phased val_loss:5.45235812 val_bpb:2.49151489 eval_time:500261ms
+val_loss:5.45235812
+val_bpb:2.49151489
+total_eval_time:500.3s
+
+Evaluation Execution Time: 683.120682477951 seconds
+
+
+STDERR:
+
+
+
+main.py is bug-free -- STOP and end your turn now. The official 3-seed averaged eval runs automatically.
+2026-05-05 04:06:36,211 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'completed', 'todo_id': '85aaf2fb'})
+2026-05-05 04:06:36,211 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=30162 response_tokens=114 total=30276
+2026-05-05 04:06:36,212 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '85aaf2fb', 'status': 'completed'}
+2026-05-05 04:06:36,212 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run the experiment to ensure the ablation works correctly' status to 'completed'
+2026-05-05 04:06:36,213 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #23] Sending request to model (step 23)...
+2026-05-05 04:06:36,213 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Run the experiment to ensure the ablation works correctly' status to 'completed'
+2026-05-05 04:06:43,824 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_todos({})
+2026-05-05 04:06:43,824 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=32288 response_tokens=21 total=32309
+2026-05-05 04:06:43,825 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_todos | args: {}
+2026-05-05 04:06:43,825 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_todos | result: Current todos:
+1. [x] [78be0df1] Read main.py and find the scaling logic related to H_diag_sqrt and E
+2. [x] [d2045a26] Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling
+3. [x] [85aaf2fb] Run the experiment to ensure the ablation works correctly
+
+Summary: 3 completed, 0 in progress, 0 pending
+
+All tasks are completed. Do NOT call read_todos again — respond to the user with a summary instead.
+2026-05-05 04:06:43,826 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #24] Sending request to model (step 24)...
+2026-05-05 04:06:43,826 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Current todos:
+1. [x] [78be0df1] Read main.py and find the scaling logic related to H_diag_sqrt and E
+2. [x] [d2045a26] Modify main.py to remove H_diag_sqrt scaling and H_diag_inv_sqrt unscaling
+3. [x] [85aaf2fb] Run the experiment to ensure the ablation works correctly
+
+Summary: 3 completed, 0 in progress, 0 pending
+
+All tasks are completed. Do NOT call read_todos again — respond to the user with a summary instead.
+2026-05-05 04:06:49,748 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] I have successfully implemented the requested ablation by surgically editing `main.py`.
+
+### Changes Made
+1. **Removed `H_diag_sqrt` scaling from `E`:** Replaced `E_prime = E * H_diag_sqrt.unsqueeze(0)` with `E_prime = E`.
+2. **Removed `H_diag_inv_sqrt` unscaling from `B`:** Replaced `B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()` with `B = B_prime`.
+3. Computed the truncated SVD directly on the raw `E` matrix.
+
+I then ran a debug trial (`run_experiment`) using a shortened timeline (`MAX_WALLCLOCK_SECONDS="60"`, `ITERATIONS="50"`) while keeping default tensor shapes. 
+
+The first run timed out due to initial pre-compilation (Triton/torchinductor cache warming). As expected, the second run sped up considerably and succeeded:
+- **Status:** SUCCESS
+- **val_bpb:** 2.4915
+
+The ablation is now verified bug-free and the `main.py` defaults remain completely intact for the orchestrator to automatically launch the official 3-seed averaged eval.
+2026-05-05 04:06:49,748 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=30569 response_tokens=397 total=30966
+2026-05-05 04:51:07,430 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:51:07,431 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:51:27,998 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:51:27,999 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:56:12,022 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:56:12,023 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:41:25,072 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:41:25,073 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 06:26:22,127 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 06:26:22,128 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 06:26:34,053 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 06:26:34,053 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 06:32:17,372 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 06:32:17,373 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.

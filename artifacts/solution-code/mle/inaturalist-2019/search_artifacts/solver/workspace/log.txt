@@ -1,0 +1,34 @@
+Iteration 1: solution_ecce6871
+Hypothesis: Taxonomic-Enhanced Multi-Layer Prototype Fusion. Combine visual prototypes (alpha=0.5) and taxonomic distances, apply as pairwise margins (beta=1.0) to cross-entropy loss.
+Result: Top-1 Validation Accuracy: 75.30% (Val Metric: 0.2470).
+Takeaway: This method yields a +0.81% absolute improvement over the standard ConvNeXt-Tiny baseline (74.49%). The margin effectively pushes confusing classes further apart.
+Iteration 2: solution_1bb59fb4
+Hypothesis: Evaluate the effect of higher penalty for visual/taxonomic similarity by setting beta=2.0 (alpha=0.5).
+Result: Top-1 Validation Accuracy: 74.87% (Val Metric: 0.2513).
+Takeaway: A higher margin (beta=2.0) performs worse than beta=1.0 (75.30%), but both outperform the baseline (74.49%). This indicates that the visual-taxonomic margin method is robust, but scaling the margin too high introduces too much disruption to cross-entropy.
+Iteration 3 & 4: solution_36bf5623 (alpha=1.0) and solution_01b6df7c (alpha=0.0)
+Hypothesis: Isolate the impact of the visual vs. taxonomic similarities. The original idea hypothesized that fusing them filters spurious correlations.
+Result:
+- alpha=1.0 (Purely Visual): Top-1 Val Acc 75.65% (Val Metric: 0.2435)
+- alpha=0.0 (Purely Taxonomic): Top-1 Val Acc 74.93% (Val Metric: 0.2507)
+Takeaway: Both outperform the ConvNeXt-Tiny baseline (74.49%), proving that pairwise logit adjustment using similarity priors works well. However, purely visual features provided the strongest prior (75.65%), outperforming the taxonomic-visual fusion (75.30%). The taxonomic distance serves as a valid but coarser regularizer.
+Iteration 5 & 6: solution_cecd91b3 (S=V*T) and solution_b5a659a9 (S=V*(T**0.5))
+Hypothesis: Instead of a linear convex combination, multiplicative fusion explicitly zeros out visual similarity for taxonomically separate species (filtering background spurious correlations). Softening it with square root preserves some gradient.
+Result:
+- Multiplicative (S=V*T): Top-1 Val Acc 75.43% (Val Metric: 0.2457)
+- Soft Multiplicative (S=V*(T**0.5)): Top-1 Val Acc 75.16% (Val Metric: 0.2484)
+Takeaway: Multiplicative fusion (75.43%) is better than linear fusion (75.30%), validating the idea that zeroing out spurious similarities is helpful. However, pure visual prototypes (75.65%) still reign supreme. The network's pre-trained features contain intrinsic structural priors that are superior to the discrete taxonomic labels.
+Iteration 7 & 8: solution_b1004918 (S=V**2, beta=1.0) and solution_dea73086 (S=V**2, beta=2.0)
+Hypothesis: Sharpening the visual similarity matrix by squaring it restricts the margin penalty to only highly similar visual confusions, preserving gradient capacity for others.
+Result:
+- beta=1.0: Top-1 Val Acc 75.56% (Val Metric: 0.2444)
+- beta=2.0: Top-1 Val Acc 75.19% (Val Metric: 0.2481)
+Takeaway: Sharpening (75.56%) performs almost exactly as well as the linear unsharpened visual matrix (75.65%). It confirms that the dominant signal comes from the highest confusions, but maintaining a broader, softer repulsive margin (linear V) is slightly superior.
+Iteration 9 & 10: solution_10dcfca4 (label_smoothing=0) and solution_d50f42fd (unnormalized V)
+Hypothesis:
+1. The margin is doing enough regularizing, removing label smoothing might be better.
+2. Unnormalized V adds a minimum margin to ALL classes (~0.81), operating like CosFace with an additional fine-grained peak.
+Result:
+- label_smoothing=0.0: Top-1 Val Acc 75.47% (Val Metric: 0.2453)
+- unnormalized V (M = beta * V): Top-1 Val Acc 75.77% (Val Metric: 0.2423)
+Takeaway: Label smoothing is still required (0.1 is better than 0.0). However, unnormalized V set a NEW BEST score (75.77%), outperforming V_norm (75.65%). The strong baseline margin for all classes combined with the fine-grained visual peak creates the optimal loss surface.

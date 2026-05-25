@@ -1,0 +1,15 @@
+```yaml
+idea:
+  Name: hybrid_semantic_cartesian_pe
+  Title: Hybrid Semantic-Cartesian Positional Encodings for 3D Object Detection
+  Short Hypothesis: Fusing ego-centric Cartesian positional encodings with HD-map-derived semantic coordinate encodings allows the model to leverage road topology for vehicles while maintaining precise spatial localization for unconstrained objects like pedestrians.
+  Abstract: The previous approach successfully demonstrated that using semantic coordinate encodings (e.g., distance to lane center) aligns multi-modal transformers to road topologies, significantly improving bounding box predictions. However, strictly replacing Cartesian coordinates with semantic ones can degrade localization for objects not bound by lanes, such as pedestrians or vehicles executing complex maneuvers. This refined approach proposes a Hybrid Semantic-Cartesian Positional Encoding (HSC-PE) that adaptively combines standard 3D Cartesian geometry with map-derived semantic features (local lane heading, distance to lane center, intersection proximity). By fusing both, the network dynamically applies map-based constraints where appropriate while preserving exact Euclidean spatial reasoning.
+  Experiments:
+    - hypothesis: Fusing Cartesian and semantic positional encodings improves mean AP over purely semantic encodings by restoring localization accuracy for non-vehicular and off-road objects.
+      experiment_plan_steps:
+        - Extract semantic features from HD maps for each spatial query/voxel, including distance to the nearest lane center, local lane heading relative to the ego-vehicle, and distance to the nearest intersection.
+        - Implement a Hybrid Positional Encoding (HSC-PE) module that concatenates standard 3D Cartesian sinusoidal encodings with the semantic coordinate encodings.
+        - Add a lightweight learnable projection or attention layer to dynamically weight the Cartesian vs. semantic encodings based on the local feature context (e.g., allowing the model to rely more on Cartesian PE for pedestrians).
+        - Train the 3D object detection baseline with HSC-PE and evaluate the class-specific AP improvements, specifically comparing constrained classes (cars) versus unconstrained classes (pedestrians, bicycles).
+  Risk Factors and Limitations: Fusing multiple positional encodings increases the dimensionality and may require careful tuning of the projection layers to prevent overfitting. Map inaccuracies or missing map data in certain regions could cause the semantic encodings to act as noise, requiring robust fallback mechanisms to Cartesian coordinates.
+```

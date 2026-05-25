@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6784738306493273\nBest threshold: 0.48999999999999977",
+  "exec_time": 1965.0,
+  "analysis": "Tested Normalized Asymmetric Loss (gamma_neg=4.0, gamma_pos=1.0) on 448x448 features.\nResult: 0.6784.\nConclusion: Although still highly performant (almost matching the 448 focal model), setting gamma_neg=4.0 is too aggressive for down-weighting negatives compared to gamma_neg=2.0, leading to a minor drop in F1.",
+  "val_metric": 0.678473830649327
+}

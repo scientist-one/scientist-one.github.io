@@ -1,0 +1,219 @@
+2026-04-28 20:57:51,966 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-04-28 20:57:52,007 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-04-28 20:57:52,007 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] You are analyzing a successful Kaggle-style ML competition solution.
+Task Description:
+
+
+Original Idea:
+idea:
+  Name: data_driven_hierarchical_asymmetric_loss
+  Title: Data-Driven Hierarchical Asymmetric Loss for Noisy Multi-Label Classification
+  Short Hypothesis: By replacing rigid mutual exclusivity with Asymmetric Loss (ASL)
+    and soft data-driven co-occurrence penalties, the model will robustly handle crowdsourced
+    false negatives without degrading from brittle ontological rules.
+  Abstract: The original approach's reliance on strict, predefined mutually exclusive
+    relationships proved brittle in the face of fuzzy, crowdsourced art attributes,
+    leading to mediocre performance. This refinement shifts to a Data-Driven Hierarchical
+    Asymmetric Loss, leveraging Asymmetric Loss (ASL) to natively down-weight penalties
+    on missing labels (false negatives) while introducing a soft regularization term
+    based on empirical attribute co-occurrences. By extracting hierarchical dependencies
+    directly from the training data and applying them as soft constraints, the model
+    maintains sensible predictions while greatly improving robustness against annotation
+    noise.
+  Experiments:
+  - hypothesis: Asymmetric Loss (ASL) handles false negatives more effectively than
+      standard BCE or exclusion losses by dynamically down-weighting the penalty of
+      easy negatives and applying a probability margin to ignore uncertain missing
+      labels.
+    experiment_plan_steps:
+    - Implement Asymmetric Loss (ASL) as the base criterion, replacing the previous
+      strict mutual exclusion loss.
+    - Train a baseline ResNet/EfficientNet model using ASL, tuning `gamma_neg` (e.g.,
+      2-4), `gamma_pos` (e.g., 0-1), and the negative clipping margin `m` (e.g., 0.05).
+    - Evaluate micro F1 score to establish the isolated performance gain from native
+      false-negative tolerance.
+  - hypothesis: Soft, data-driven hierarchical regularization will correct logically
+      inconsistent predictions without the brittleness of manually defined ontological
+      rules.
+    experiment_plan_steps:
+    - Compute an empirical conditional probability matrix $P(A|B)$ from the training
+      labels, retaining only strong dependencies (e.g., $P(A|B) > 0.95$) to represent
+      hierarchical inclusion (if B is present, A must be present).
+    - Implement a vectorized soft penalty term: $\sum_{A,B} M_{A,B} \max(0, p_B -
+        p_A)^2$, where $M_{A,B}$ is the filtered conditional probability and $p$ are
+        the predicted probabilities.
+    - Combine this soft hierarchical regularization with the ASL base loss.
+    - Perform hyperparameter tuning on the loss weighting to balance primary attribute
+      classification and structural consistency, evaluating the final micro F1 score
+      against the previous baseline.
+  Risk Factors and Limitations:
+  - Deriving the dependency matrix directly from noisy labels might inadvertently
+    reinforce existing systematic biases or noise if the inclusion threshold is set
+    too low.
+  - Tuning the ASL parameters ($\gamma_-$, clip margin) alongside the hierarchical
+    loss weight may require extensive hyperparameter search to find the optimal balance.
+  - Computing the hierarchical loss term across all valid pairs of thousands of attributes
+    could introduce minor computational overhead during training if not efficiently
+    vectorized.
+scores:
+  overall: 8.05
+
+
+Best `main.py` Code:
+```python
+import os
+import gc
+import json
+import time
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+NUM_CLASSES = 3474
+CACHE_DIR = "/workspace/.cache/my_features"
+
+class MLP(nn.Module):
+    def __init__(self, input_dim=3072, num_classes=NUM_CLASSES):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(2048, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.15),
+            nn.Linear(1024, num_classes)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+def load_features(split_name, res):
+    features_path = os.path.join(CACHE_DIR, f"{split_name}_features_{res}_v2.pt")
+    targets_path = os.path.join(CACHE_DIR, f"{split_name}_targets_{res}_v2.pt")
+    ids_path = os.path.join(CACHE_DIR, f"{split_name}_ids_{res}_v2.csv")
+    
+    features = torch.load(features_path)
+    targets = torch.load(targets_path) if os.path.exists(targets_path) else None
+    ids_df = pd.read_csv(ids_path)
+    return features, targets, ids_df
+
+def predict_ensemble(features, model_dir, num_models=10):
+    preds_models = np.zeros((num_models, len(features), NUM_CLASSES), dtype=np.float32)
+    for m in range(num_models):
+        model = MLP().to(DEVICE)
+        model.load_state_dict(torch.load(os.path.join(model_dir, f"model_{m}.pt"), map_location=DEVICE))
+        model.eval()
+        with torch.no_grad():
+            preds = []
+            for i in range(0, len(features), 1024):
+                x = features[i:i+1024].to(DEVICE)
+                preds.append(torch.sigmoid(model(x)).cpu().numpy())
+            preds_models[m] = np.concatenate(preds)
+    return preds_models
+
+def find_best_threshold(val_preds, val_targets):
+    best_f1 = 0
+    best_thresh = 0.1
+    for t in np.arange(0.1, 0.7, 0.01):
+        preds_t = (val_preds > t).astype(np.float32)
+        tp = (preds_t * val_targets).sum()
+        fp = (preds_t * (1 - val_targets)).sum()
+        fn = ((1 - preds_t) * val_targets).sum()
+        f1 = 2 * tp / (2 * tp + fp + fn + 1e-8)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thresh = t
+    return best_f1, best_thresh
+
+def main():
+    # Ensembles
+    # 336_v2 -> best ASL model: 81c407b9
+    # 448_v2 -> best focal model: ed71bd92
+    
+    val_features_336, val_targets, _ = load_features('val', 336)
+    val_features_448, _, _ = load_features('val', 448)
+    
+    val_preds_336 = predict_ensemble(val_features_336, '/workspace/solution_81c407b9/')
+    val_preds_448 = predict_ensemble(val_features_448, '/workspace/solution_eb839396/')
+    
+    # We can average all 20 models
+    val_preds_ensemble = np.concatenate([val_preds_336, val_preds_448], axis=0).mean(axis=0)
+    
+    val_targets_np = val_targets.numpy()
+    best_f1, best_thresh = find_best_threshold(val_preds_ensemble, val_targets_np)
+    
+    print(f"VAL_METRIC: {best_f1}")
+    print(f"Best threshold: {best_thresh}")
+    
+    test_features_336, _, test_ids_df = load_features('test', 336)
+    test_features_448, _, _ = load_features('test', 448)
+    
+    test_preds_336 = predict_ensemble(test_features_336, '/workspace/solution_81c407b9/')
+    test_preds_448 = predict_ensemble(test_features_448, '/workspace/solution_ed71bd92/')
+    
+    test_preds_ensemble = np.concatenate([test_preds_336, test_preds_448], axis=0).mean(axis=0)
+    test_preds_bin = (test_preds_ensemble > best_thresh).astype(int)
+    
+    submission = []
+    for i, img_id in enumerate(test_ids_df['id']):
+        labels = np.where(test_preds_bin[i] == 1)[0]
+        labels_str = " ".join([str(l) for l in labels])
+        submission.append({'id': img_id, 'attribute_ids': labels_str})
+        
+    sub_df = pd.DataFrame(submission)
+    sample_sub = pd.read_csv('/data/sample_submission.csv')
+    sub_df = sample_sub[['id']].merge(sub_df, on='id', how='left')
+    sub_df['attribute_ids'] = sub_df['attribute_ids'].fillna('')
+    sub_df.to_csv('submission.csv', index=False)
+
+if __name__ == '__main__':
+    main()
+```
+
+Please suggest a set of 4 distinct ablation experiments to evaluate specific
+components or simplifications of this solution. Good ablations target one component at a
+time (e.g., remove an augmentation, swap a model backbone, drop ensembling, simplify
+feature engineering, drop fold averaging). For each ablation, provide a short name, a
+description of what to remove/change in `main.py`, and the reasoning.
+Return the response as a JSON list of objects, each having keys: "name", "description", "reasoning".
+Example:
+[
+  {"name": "no_tta", "description": "Disable test-time augmentation in inference.", "reasoning": "Test impact of TTA."}
+]
+Return ONLY valid JSON.
+Use the `write_ablation_file` tool to save your response to `ablation_suggestions.txt`.
+
+2026-04-28 20:58:11,251 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_ablation_file({'filename': 'ablation_suggestions.txt', 'content': '[\n  {\n    "name": "single_resolution_ensemble",\n    "description": "Remove the 448 resolution features and predictions, relying solely on the 336 resolution models for the final validation and test ensemble.",\n    "reasoning": "Evaluate the performance gain provided by ensembling multi-resolution features (336 and 448) compared to a single resolution baseline."\n  },\n  {\n    "name": "single_checkpoint_inference",\n    "description": "Change the default `num_models` parameter in the `predict_ensemble` function from 10 to 1.",\n    "reasoning": "Assess the impact of deep ensembling (10 checkpoints per resolution) versus using just a single trained checkpoint."\n  },\n  {\n    "name": "fixed_standard_threshold",\n    "description": "Bypass the `find_best_threshold` function and hardcode the classification threshold to 0.5 when calculating `test_preds_bin`.",\n    "reasoning": "Determine how much of the metric improvement comes from dynamically optimizing the probability threshold on the validation set versus a standard 0.5 cutoff."\n  },\n  {\n    "name": "shallow_mlp_head",\n    "description": "Remove the second hidden layer block (Linear(2048, 1024), BatchNorm1d, ReLU, Dropout) from the `MLP` class, projecting directly from 2048 to `num_classes`.",\n    "reasoning": "Test if the high capacity of a 2-hidden-layer MLP is strictly necessary for this dataset, or if a shallower 1-hidden-layer network is sufficient to map features to classes."\n  }\n]'})
+2026-04-28 20:58:11,253 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=4871 response_tokens=2033 total=6904
+2026-04-28 20:58:11,254 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_ablation_file | args: {'filename': 'ablation_suggestions.txt', 'content': '[\n  {\n    "name": "single_resolution_ensemble",\n    "description": "Remove the 448 resolution features and predictions, relying solely on the 336 resolution models for the final validation and test ensemble.",\n    "reasoning": "Evaluate the performance gain provided by ensembling multi-resolution features (336 and 448) compared to a single resolution baseline."\n  },\n  {\n    "name": "single_checkpoint_inference",\n    "description": "Change the default `num_models` parameter in the `predict_ensemble` function from 10 to 1.",\n    "reasoning": "Assess the impact of deep ensembling (10 checkpoints per resolution) versus using just a single trained checkpoint."\n  },\n  {\n    "name": "fixed_standard_threshold",\n    "description": "Bypass the `find_best_threshold` function and hardcode the classification threshold to 0.5 when calculating `test_preds_bin`.",\n    "reasoning": "Determine how much of the metric improvement comes from dynamically optimizing the probability threshold on the validation set versus a standard 0.5 cutoff."\n  },\n  {\n    "name": "shallow_mlp_head",\n    "description": "Remove the second hidden layer block (Linear(2048, 1024), BatchNorm1d, ReLU, Dropout) from the `MLP` class, projecting directly from 2048 to `num_classes`.",\n    "reasoning": "Test if the high capacity of a 2-hidden-layer MLP is strictly necessary for this dataset, or if a shallower 1-hidden-layer network is sufficient to map features to classes."\n  }\n]'}
+2026-04-28 20:58:11,266 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_ablation_file | result: Successfully wrote ablation_suggestions.txt
+2026-04-28 20:58:11,268 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-04-28 20:58:11,268 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Successfully wrote ablation_suggestions.txt
+2026-04-28 20:58:15,720 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] [
+  {
+    "name": "single_resolution_ensemble",
+    "description": "Remove the 448 resolution features and predictions, relying solely on the 336 resolution models for the final validation and test ensemble.",
+    "reasoning": "Evaluate the performance gain provided by ensembling multi-resolution features (336 and 448) compared to a single resolution baseline."
+  },
+  {
+    "name": "single_checkpoint_inference",
+    "description": "Change the default `num_models` parameter in the `predict_ensemble` function from 10 to 1.",
+    "reasoning": "Assess the impact of deep ensembling (10 checkpoints per resolution) versus using just a single trained checkpoint."
+  },
+  {
+    "name": "fixed_standard_threshold",
+    "description": "Bypass the `find_best_threshold` function and hardcode the classification threshold to 0.5 when calculating `test_preds_bin`.",
+    "reasoning": "Determine how much of the metric improvement comes from dynamically optimizing the probability threshold on the validation set versus a standard 0.5 cutoff."
+  },
+  {
+    "name": "shallow_mlp_head",
+    "description": "Remove the second hidden layer block (Linear(2048, 1024), BatchNorm1d, ReLU, Dropout) from the `MLP` class, projecting directly from 2048 to `num_classes`.",
+    "reasoning": "Test if the high capacity of a 2-hidden-layer MLP is strictly necessary for this dataset, or if a shallower 1-hidden-layer network is sufficient to map features to classes."
+  }
+]
+2026-04-28 20:58:15,720 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=5423 response_tokens=382 total=5805

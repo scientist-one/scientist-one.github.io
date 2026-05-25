@@ -1,0 +1,1307 @@
+2026-05-05 03:06:53,085 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:06:53,085 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:06:53,131 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-05-05 03:06:53,131 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] Implement and verify a single ablation experiment.
+
+The known-good `main.py` is on disk at the relative path `main.py`. Use
+`read_file` (and `grep`) to inspect it -- do not assume its contents.
+
+Ablation to implement: Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian. Scale the error matrix as `E_prime = E @ L` before SVD, and unscale the right factor as `B = B_prime @ torch.linalg.inv(L)`.
+
+Your goal is to make the ablated `main.py` RUN WITHOUT ERRORS. You are NOT
+trying to maximize val_bpb during these debug runs -- the official 3-seed
+averaged eval runs automatically afterwards on `main.py`'s defaults and is
+what produces the reported metric.
+
+Plan:
+1. Apply the ablation with surgical `hashline_edit` calls on `main.py`.
+   - Read the target region first to anchor the edit.
+   - Prefer flipping an existing `<feature>_enabled` flag in
+     `Hyperparameters` over rewriting a function body when both achieve the
+     same effect.
+   - Never call `write_file("main.py", ...)` -- full-file rewrites are
+     reserved for the orchestrator. `write_file` is fine for new helper files.
+   - Preserve the `--mode train` / `--mode eval` CLI and the BPB calculation.
+   - Keep `main.py`'s default hyperparameters intact (iterations, wallclock
+     cap, batch sizes, etc.) so the official 3-seed eval gets full quality.
+     Do NOT reduce these defaults to make debug runs faster -- use the `env`
+     argument of `run_experiment` for that instead (see step 2).
+
+2. Call `run_experiment("main.py", env={...})` to run training + eval on
+   8xH100. The tool returns status, val_bpb, artifact size, and trimmed
+   stdout/stderr.
+   - For debug iterations, pass `env` to shrink wall-clock cost WITHOUT
+     changing tensor shapes. Safe-to-reduce time knobs:
+     `MAX_WALLCLOCK_SECONDS`, `ITERATIONS`, `WARMUP_STEPS`, `VAL_LOSS_EVERY`.
+     Example: `env={"MAX_WALLCLOCK_SECONDS": "60", "ITERATIONS": "50"}`.
+   - DO NOT shrink shape-affecting knobs (e.g. `TRAIN_BATCH_TOKENS`,
+     `TRAIN_SEQ_LEN`, `VAL_BATCH_TOKENS`, `EVAL_SEQ_LEN`). torch.compile
+     and Triton key compiled kernels on tensor shape, and the
+     torchinductor / Triton caches are SHARED with the official 3-seed
+     eval. By keeping shapes at defaults during debug, your debug runs
+     also pre-compile the kernels the official eval needs -- the official
+     eval then hits warm cache and skips most compile time. Shrink shapes
+     and you both miss the cache and force the official eval to re-compile.
+   - Values must be strings. `grep os.environ.get` in `main.py` to discover
+     the full set of knobs.
+   - These env vars apply ONLY to this debug run; they do not affect
+     `main.py`'s defaults or the official 3-seed eval.
+
+3. If it errored, read stderr to identify the root cause, then patch with a
+   targeted `hashline_edit` and re-run. Only edit lines you can tie to a
+   specific symptom in the output.
+   - On a wall-clock timeout (e.g. `Command ... timed out after Ns`), retry
+     once before editing -- torch.compile and Triton caches warm up on the
+     first attempt, so the second run is often substantially faster.
+   - Do not silence errors with bare `except:`.
+   - Do not stub out the functionality the ablation is supposed to test.
+
+4. Stop as soon as ONE `run_experiment` call completes without errors. The
+   official 3-seed averaged eval runs automatically once you stop.
+
+You have at most 3 `run_experiment` calls. Use them carefully.
+
+2026-05-05 03:06:58,834 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_todos({'todos': [{'active_form': 'Exploring main.py for Hessian and SVD logic', 'status': 'in_progress', 'content': 'Find where H_diag_sqrt is computed and used in main.py'}, {'active_form': 'Applying ablation to main.py', 'status': 'pending', 'content': 'Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py'}, {'content': 'Run the modified main.py and ensure it runs without errors', 'active_form': 'Running experiment', 'status': 'pending'}]})
+2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=3418 response_tokens=206 total=3624
+2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_todos | args: {'todos': [TodoItem(id=None, content='Find where H_diag_sqrt is computed and used in main.py', status='in_progress', active_form='Exploring main.py for Hessian and SVD logic', parent_id=None, depends_on=[]), TodoItem(id=None, content='Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py', status='pending', active_form='Applying ablation to main.py', parent_id=None, depends_on=[]), TodoItem(id=None, content='Run the modified main.py and ensure it runs without errors', status='pending', active_form='Running experiment', parent_id=None, depends_on=[])]}
+2026-05-05 03:06:58,837 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_todos | result: Updated 3 todos: 0 completed, 1 in progress, 2 pending
+2026-05-05 03:06:58,838 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-05-05 03:06:58,838 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated 3 todos: 0 completed, 1 in progress, 2 pending
+2026-05-05 03:07:01,884 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'pattern': 'H_diag_sqrt|SVD|svd', 'output_mode': 'content'})
+2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=3702 response_tokens=50 total=3752
+2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': 'H_diag_sqrt|SVD|svd', 'path': None, 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:07:01,907 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Matches for 'H_diag_sqrt|SVD|svd':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2271:             U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2302:                     U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:9: Ablation to implement: Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky facto
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:64: 2026-05-05 03:06:58,834 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:66: 2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:70: 2026-05-05 03:07:01,884 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:72: 2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+2026-05-05 03:07:01,908 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #3] Sending request to model (step 3)...
+2026-05-05 03:07:01,908 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Matches for 'H_diag_sqrt|SVD|svd':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2271:             U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2302:                     U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:9: Ablation to implement: Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky facto
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:64: 2026-05-05 03:06:58,834 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:66: 2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:70: 2026-05-05 03:07:01,884 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:72: 2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+2026-05-05 03:07:04,637 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 2220, 'limit': 100, 'path': 'main.py'})
+2026-05-05 03:07:04,637 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=5076 response_tokens=50 total=5126
+2026-05-05 03:07:04,638 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 2220, 'limit': 100}
+2026-05-05 03:07:04,644 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 2221:46|            and name.endswith(".attn_gate_w")
+2222:ef|            and 32 <= t.numel() <= 8192
+2223:56|        ):
+2224:94|            gq, gs = _quantize_gate_int8_row(t)
+2225:ff|            result[name + ".gq"] = gq
+2226:13|            result[name + ".gs"] = gs
+2227:d5|            meta[name] = "gate_int8_row"
+2228:b0|            continue
+2229:ab|        if not t.is_floating_point() or t.numel() <= 65536:
+2230:8b|            result[name] = t.to(torch.float16) if t.is_floating_point() else t
+2231:cb|            meta[name] = "passthrough (float16)"
+2232:b0|            continue
+2233:a1|        if "tok_emb" in name:
+2234:d0|            cs = h.embed_clip_sigmas
+2235:8a|        elif ".mlp." in name:
+2236:e9|            cs = h.mlp_clip_sigmas
+2237:2c|        elif ".attn." in name:
+2238:ef|            cs = h.attn_clip_sigmas
+2239:a9|        else:
+2240:e9|            cs = h.matrix_clip_sigmas
+2241:19|        bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2242:85|        clip_range = 2 ** (bits - 1) - 1
+2243:4d|        ret = gptq_quantize_weight(
+2244:4e|            t, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2245:41|        )
+2246:08|        q, s = ret
+2247:d9|        result[name + ".q"] = q
+2248:01|        result[name + ".scale"] = s
+2249:96|        meta[name] = f"gptq (int{bits})"
+2250:a6|        if lqer_on:
+2251:3a|            W_q = q.float() * s.float().view(-1, 1)
+2252:b1|            E = t.float() - W_q
+2253:ba|            lqer_cands[name] = (E, float(E.norm()))
+2254:9c|    if lqer_on and lqer_cands:
+2255:69|        top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+2256:33|        asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+2257:de|        asym_g = int(getattr(h, "lqer_asym_group", 64))
+2258:95|        for name, (E, _) in top:
+2259:ea|            t_orig = state_dict[name].detach().cpu().contiguous()
+2260:87|            H = hessians[name].float().clone()
+2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+2311:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+2312:a1|                result[name + ".lqA_a"] = qA
+2313:c9|                result[name + ".lqAs_a"] = sA
+2314:2f|                result[name + ".lqB_a"] = qB
+2315:37|                result[name + ".lqBs_a"] = sB
+2316:05|                meta[name] = meta[name] + "+lqer_asym"
+2317:ed|            else:
+2318:13|                qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+2319:6a|                result[name + ".lqA"] = qA
+2320:26|                result[name + ".lqAs"] = sA
+
+... (1502 more lines)
+2026-05-05 03:07:04,645 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #4] Sending request to model (step 4)...
+2026-05-05 03:07:04,645 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 2221:46|            and name.endswith(".attn_gate_w")
+2222:ef|            and 32 <= t.numel() <= 8192
+2223:56|        ):
+2224:94|            gq, gs = _quantize_gate_int8_row(t)
+2225:ff|            result[name + ".gq"] = gq
+2226:13|            result[name + ".gs"] = gs
+2227:d5|            meta[name] = "gate_int8_row"
+2228:b0|            continue
+2229:ab|        if not t.is_floating_point() or t.numel() <= 65536:
+2230:8b|            result[name] = t.to(torch.float16) if t.is_floating_point() else t
+2231:cb|            meta[name] = "passthrough (float16)"
+2232:b0|            continue
+2233:a1|        if "tok_emb" in name:
+2234:d0|            cs = h.embed_clip_sigmas
+2235:8a|        elif ".mlp." in name:
+2236:e9|            cs = h.mlp_clip_sigmas
+2237:2c|        elif ".attn." in name:
+2238:ef|            cs = h.attn_clip_sigmas
+2239:a9|        else:
+2240:e9|            cs = h.matrix_clip_sigmas
+2241:19|        bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2242:85|        clip_range = 2 ** (bits - 1) - 1
+2243:4d|        ret = gptq_quantize_weight(
+2244:4e|            t, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2245:41|        )
+2246:08|        q, s = ret
+2247:d9|        result[name + ".q"] = q
+2248:01|        result[name + ".scale"] = s
+2249:96|        meta[name] = f"gptq (int{bits})"
+2250:a6|        if lqer_on:
+2251:3a|            W_q = q.float() * s.float().view(-1, 1)
+2252:b1|            E = t.float() - W_q
+2253:ba|            lqer_cands[name] = (E, float(E.norm()))
+2254:9c|    if lqer_on and lqer_cands:
+2255:69|        top = sorted(lqer_cands.items(), key=lambda kv: -kv[1][1])[: h.lqer_top_k]
+2256:33|        asym_on = bool(getattr(h, "lqer_asym_enabled", False))
+2257:de|        asym_g = int(getattr(h, "lqer_asym_group", 64))
+2258:95|        for name, (E, _) in top:
+2259:ea|            t_orig = state_dict[name].detach().cpu().contiguous()
+2260:87|            H = hessians[name].float().clone()
+2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+2311:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+2312:a1|                result[name + ".lqA_a"] = qA
+2313:c9|                result[name + ".lqAs_a"] = sA
+2314:2f|                result[name + ".lqB_a"] = qB
+2315:37|                result[name + ".lqBs_a"] = sB
+2316:05|                meta[name] = meta[name] + "+lqer_asym"
+2317:ed|            else:
+2318:13|                qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+2319:6a|                result[name + ".lqA"] = qA
+2320:26|                result[name + ".lqAs"] = sA
+
+... (1502 more lines)
+2026-05-05 03:07:13,042 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] grep({'pattern': '@dataclass.*Hyperparameters|H_diag|cholesky|class Hyperparameters', 'output_mode': 'content'})
+2026-05-05 03:07:13,042 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=7383 response_tokens=809 total=8192
+2026-05-05 03:07:13,043 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep | args: {'pattern': '@dataclass.*Hyperparameters|H_diag|cholesky|class Hyperparameters', 'path': None, 'glob_pattern': None, 'output_mode': 'content', 'ignore_hidden': True}
+2026-05-05 03:07:13,056 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep | result: Matches for '@dataclass.*Hyperparameters|H_diag|cholesky|class Hyperparameters':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:224: class Hyperparameters:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2152:     Hinv = torch.cholesky_inverse(torch.linalg.cholesky(H))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2153:     Hinv = torch.linalg.cholesky(Hinv, upper=True)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2266:             H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2276:             B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2280:                 L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:9: Ablation to implement: Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky facto
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:64: 2026-05-05 03:06:58,834 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:66: 2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:70: 2026-05-05 03:07:01,884 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:72: 2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:73: 2026-05-05 03:07:01,907 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:74:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablation
+ ... [5482 characters truncated] ... 
+2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:93:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:94:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:95:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:144: 2266:86|            H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:145: 2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:146: 2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:148: 2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:154: 2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:158: 2280:22|                L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:247: 2266:86|            H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:248: 2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:249: 2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:251: 2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:257: 2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:261: 2280:22|                L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:304: 2026-05-05 03:07:13,042 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:306: 2026-05-05 03:07:13,043 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+2026-05-05 03:07:13,057 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #5] Sending request to model (step 5)...
+2026-05-05 03:07:13,057 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Matches for '@dataclass.*Hyperparameters|H_diag|cholesky|class Hyperparameters':
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:224: class Hyperparameters:
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2152:     Hinv = torch.cholesky_inverse(torch.linalg.cholesky(H))
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2153:     Hinv = torch.linalg.cholesky(Hinv, upper=True)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2266:             H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2267:             H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2268:             H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2270:             E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2276:             B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py:2280:                 L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:9: Ablation to implement: Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky facto
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:64: 2026-05-05 03:06:58,834 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:66: 2026-05-05 03:06:58,836 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:70: 2026-05-05 03:07:01,884 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:72: 2026-05-05 03:07:01,885 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:73: 2026-05-05 03:07:01,907 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] grep
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:74:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/work
+ ... [5496 characters truncated] ... 
+2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:93:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:94:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:95:   /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_go
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:144: 2266:86|            H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:145: 2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:146: 2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:148: 2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:154: 2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:158: 2280:22|                L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:247: 2266:86|            H_diag = H.diag()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:248: 2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:249: 2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:251: 2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:257: 2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:261: 2280:22|                L = torch.linalg.cholesky(H)
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:304: 2026-05-05 03:07:13,042 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] 
+  /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/agent_log.txt:306: 2026-05-05 03:07:13,043 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] grep |
+2026-05-05 03:07:15,867 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 224, 'limit': 100, 'path': 'main.py'})
+2026-05-05 03:07:15,867 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=14197 response_tokens=24 total=14221
+2026-05-05 03:07:15,868 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 224, 'limit': 100}
+2026-05-05 03:07:15,870 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 225:d6|    data_path_root = os.environ.get("DATA_PATH", "/data/datasets/")
+226:60|    tokenizer_path_root = os.environ.get("TOKENIZER_PATH", "/data/tokenizers/")
+227:dc|    seed = int(os.environ.get("SEED", 42))
+228:c5|    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
+229:19|    iterations = int(os.environ.get("ITERATIONS", 20000))
+230:7a|    warmdown_frac = float(os.environ.get("WARMDOWN_FRAC", 0.85))
+231:31|    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+232:fb|    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786432))
+233:d1|    fused_ce_enabled = bool(int(os.environ.get("FUSED_CE_ENABLED", "1")))
+234:14|    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+235:7f|    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+236:d1|    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+237:b8|    val_batch_tokens = int(os.environ.get("VAL_BATCH_TOKENS", 524288))
+238:31|    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+239:9b|    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 0))
+240:79|    vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
+241:e7|    num_layers = int(os.environ.get("NUM_LAYERS", 11))
+242:40|    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
+243:fe|    model_dim = int(os.environ.get("MODEL_DIM", 512))
+244:b1|    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
+245:88|    num_heads = int(os.environ.get("NUM_HEADS", 8))
+246:77|    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
+247:54|    skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
+248:5e|    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+249:8f|    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 3e1))
+250:59|    rope_base = float(os.environ.get("ROPE_BASE", 1e4))
+251:a3|    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+252:b7|    rope_train_seq_len = int(os.environ.get("ROPE_TRAIN_SEQ_LEN", 2048))
+253:f6|    rope_yarn = bool(int(os.environ.get("ROPE_YARN", "0")))
+254:bb|    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+255:8c|    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 5.0))
+256:f9|    num_loops = int(os.environ.get("NUM_LOOPS", 2))
+257:c2|    loop_start = int(os.environ.get("LOOP_START", 3))
+258:60|    loop_end = int(os.environ.get("LOOP_END", 5))
+259:72|    enable_looping_at = float(os.environ.get("ENABLE_LOOPING_AT", 0.35))
+260:b8|    parallel_start_layer = int(os.environ.get("PARALLEL_START_LAYER", 8))
+261:48|    parallel_final_lane = os.environ.get("PARALLEL_FINAL_LANE", "mean")
+262:84|    min_lr = float(os.environ.get("MIN_LR", 0.1))
+263:db|    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
+264:b2|    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.03))
+265:8e|    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+266:85|    matrix_lr = float(os.environ.get("MATRIX_LR", 0.026))
+267:8e|    scalar_lr = float(os.environ.get("SCALAR_LR", 0.02))
+268:7d|    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.97))
+269:09|    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
+270:34|    muon_momentum_warmup_start = float(
+271:4e|        os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92)
+272:5c|    )
+273:9d|    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+274:17|    muon_row_normalize = bool(int(os.environ.get("MUON_ROW_NORMALIZE", "1")))
+275:83|    beta1 = float(os.environ.get("BETA1", 0.9))
+276:0a|    beta2 = float(os.environ.get("BETA2", 0.99))
+277:05|    adam_eps = float(os.environ.get("ADAM_EPS", 1e-08))
+278:ce|    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
+279:d8|    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+280:53|    adam_wd = float(os.environ.get("ADAM_WD", 0.02))
+281:43|    muon_wd = float(os.environ.get("MUON_WD", 0.095))
+282:82|    embed_wd = float(os.environ.get("EMBED_WD", 0.085))
+283:3b|    ema_decay = float(os.environ.get("EMA_DECAY", 0.9965))
+284:37|    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "1")))
+285:b8|    ttt_lora_rank = int(os.environ.get("TTT_LORA_RANK", 80))
+286:7c|    ttt_lora_lr = float(os.environ.get("TTT_LORA_LR", 0.0001))
+287:86|    ttt_chunk_size = int(os.environ.get("TTT_CHUNK_SIZE", 48))
+288:94|    ttt_eval_seq_len = int(os.environ.get("TTT_EVAL_SEQ_LEN", 2048))
+289:ac|    ttt_batch_size = int(os.environ.get("TTT_BATCH_SIZE", 64))
+290:23|    ttt_grad_steps = int(os.environ.get("TTT_GRAD_STEPS", 1))
+291:e9|    ttt_weight_decay = float(os.environ.get("TTT_WEIGHT_DECAY", 0.5))
+292:9e|    ttt_beta1 = float(os.environ.get("TTT_BETA1", 0))
+293:75|    ttt_beta2 = float(os.environ.get("TTT_BETA2", 0.99))
+294:b9|    ttt_k_lora = bool(int(os.environ.get("TTT_K_LORA", "1")))
+295:7c|    ttt_mlp_lora = bool(int(os.environ.get("TTT_MLP_LORA", "1")))
+296:34|    ttt_o_lora = bool(int(os.environ.get("TTT_O_LORA", "1")))
+297:26|    ttt_optimizer = os.environ.get("TTT_OPTIMIZER", "adam")
+298:00|    ttt_eval_batches = os.environ.get("TTT_EVAL_BATCHES", "")
+299:e9|    val_doc_fraction = float(os.environ.get("VAL_DOC_FRACTION", 1.0))
+300:c2|    compressor = os.environ.get("COMPRESSOR", "pergroup")
+301:23|    gptq_calibration_batches = int(os.environ.get("GPTQ_CALIBRATION_BATCHES", 16))
+302:e7|    gptq_reserve_seconds = float(os.environ.get("GPTQ_RESERVE_SECONDS", 0.5))
+303:0a|    phased_ttt_prefix_docs = int(os.environ.get("PHASED_TTT_PREFIX_DOCS", 2500))
+304:2a|    phased_ttt_num_phases = int(os.environ.get("PHASED_TTT_NUM_PHASES", 3))
+305:20|    global_ttt_lr = float(os.environ.get("GLOBAL_TTT_LR", 0.001))
+306:61|    global_ttt_momentum = float(os.environ.get("GLOBAL_TTT_MOMENTUM", 0.9))
+307:75|    global_ttt_epochs = int(os.environ.get("GLOBAL_TTT_EPOCHS", 1))
+308:13|    global_ttt_chunk_tokens = int(os.environ.get("GLOBAL_TTT_CHUNK_TOKENS", 32768))
+309:25|    global_ttt_batch_seqs = int(os.environ.get("GLOBAL_TTT_BATCH_SEQS", 32))
+310:e8|    global_ttt_warmup_start_lr = float(
+311:25|        os.environ.get("GLOBAL_TTT_WARMUP_START_LR", 0.0)
+312:5c|    )
+313:cc|    global_ttt_warmup_chunks = int(os.environ.get("GLOBAL_TTT_WARMUP_CHUNKS", 0))
+314:0f|    global_ttt_grad_clip = float(os.environ.get("GLOBAL_TTT_GRAD_CLIP", 1.0))
+315:f3|    global_ttt_respect_doc_boundaries = bool(
+316:fc|        int(os.environ.get("GLOBAL_TTT_RESPECT_DOC_BOUNDARIES", "1"))
+317:5c|    )
+318:15|    matrix_bits = int(os.environ.get("MATRIX_BITS", 6))
+319:59|    embed_bits = int(os.environ.get("EMBED_BITS", 7))
+320:c1|    matrix_clip_sigmas = float(os.environ.get("MATRIX_CLIP_SIGMAS", 12.85))
+321:fa|    embed_clip_sigmas = float(os.environ.get("EMBED_CLIP_SIGMAS", 14.0))
+322:31|    mlp_clip_sigmas = float(os.environ.get("MLP_CLIP_SIGMAS", 11.5))
+323:4f|    attn_clip_sigmas = float(os.environ.get("ATTN_CLIP_SIGMAS", 13.0))
+324:ea|    attn_out_gate_enabled = bool(int(os.environ.get("ATTN_OUT_GATE_ENABLED", "0")))
+
+... (3498 more lines)
+2026-05-05 03:07:15,872 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #6] Sending request to model (step 6)...
+2026-05-05 03:07:15,872 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 225:d6|    data_path_root = os.environ.get("DATA_PATH", "/data/datasets/")
+226:60|    tokenizer_path_root = os.environ.get("TOKENIZER_PATH", "/data/tokenizers/")
+227:dc|    seed = int(os.environ.get("SEED", 42))
+228:c5|    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
+229:19|    iterations = int(os.environ.get("ITERATIONS", 20000))
+230:7a|    warmdown_frac = float(os.environ.get("WARMDOWN_FRAC", 0.85))
+231:31|    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+232:fb|    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786432))
+233:d1|    fused_ce_enabled = bool(int(os.environ.get("FUSED_CE_ENABLED", "1")))
+234:14|    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+235:7f|    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+236:d1|    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+237:b8|    val_batch_tokens = int(os.environ.get("VAL_BATCH_TOKENS", 524288))
+238:31|    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+239:9b|    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 0))
+240:79|    vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
+241:e7|    num_layers = int(os.environ.get("NUM_LAYERS", 11))
+242:40|    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
+243:fe|    model_dim = int(os.environ.get("MODEL_DIM", 512))
+244:b1|    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
+245:88|    num_heads = int(os.environ.get("NUM_HEADS", 8))
+246:77|    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
+247:54|    skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
+248:5e|    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+249:8f|    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 3e1))
+250:59|    rope_base = float(os.environ.get("ROPE_BASE", 1e4))
+251:a3|    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+252:b7|    rope_train_seq_len = int(os.environ.get("ROPE_TRAIN_SEQ_LEN", 2048))
+253:f6|    rope_yarn = bool(int(os.environ.get("ROPE_YARN", "0")))
+254:bb|    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
+255:8c|    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 5.0))
+256:f9|    num_loops = int(os.environ.get("NUM_LOOPS", 2))
+257:c2|    loop_start = int(os.environ.get("LOOP_START", 3))
+258:60|    loop_end = int(os.environ.get("LOOP_END", 5))
+259:72|    enable_looping_at = float(os.environ.get("ENABLE_LOOPING_AT", 0.35))
+260:b8|    parallel_start_layer = int(os.environ.get("PARALLEL_START_LAYER", 8))
+261:48|    parallel_final_lane = os.environ.get("PARALLEL_FINAL_LANE", "mean")
+262:84|    min_lr = float(os.environ.get("MIN_LR", 0.1))
+263:db|    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
+264:b2|    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.03))
+265:8e|    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+266:85|    matrix_lr = float(os.environ.get("MATRIX_LR", 0.026))
+267:8e|    scalar_lr = float(os.environ.get("SCALAR_LR", 0.02))
+268:7d|    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.97))
+269:09|    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
+270:34|    muon_momentum_warmup_start = float(
+271:4e|        os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92)
+272:5c|    )
+273:9d|    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+274:17|    muon_row_normalize = bool(int(os.environ.get("MUON_ROW_NORMALIZE", "1")))
+275:83|    beta1 = float(os.environ.get("BETA1", 0.9))
+276:0a|    beta2 = float(os.environ.get("BETA2", 0.99))
+277:05|    adam_eps = float(os.environ.get("ADAM_EPS", 1e-08))
+278:ce|    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
+279:d8|    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+280:53|    adam_wd = float(os.environ.get("ADAM_WD", 0.02))
+281:43|    muon_wd = float(os.environ.get("MUON_WD", 0.095))
+282:82|    embed_wd = float(os.environ.get("EMBED_WD", 0.085))
+283:3b|    ema_decay = float(os.environ.get("EMA_DECAY", 0.9965))
+284:37|    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "1")))
+285:b8|    ttt_lora_rank = int(os.environ.get("TTT_LORA_RANK", 80))
+286:7c|    ttt_lora_lr = float(os.environ.get("TTT_LORA_LR", 0.0001))
+287:86|    ttt_chunk_size = int(os.environ.get("TTT_CHUNK_SIZE", 48))
+288:94|    ttt_eval_seq_len = int(os.environ.get("TTT_EVAL_SEQ_LEN", 2048))
+289:ac|    ttt_batch_size = int(os.environ.get("TTT_BATCH_SIZE", 64))
+290:23|    ttt_grad_steps = int(os.environ.get("TTT_GRAD_STEPS", 1))
+291:e9|    ttt_weight_decay = float(os.environ.get("TTT_WEIGHT_DECAY", 0.5))
+292:9e|    ttt_beta1 = float(os.environ.get("TTT_BETA1", 0))
+293:75|    ttt_beta2 = float(os.environ.get("TTT_BETA2", 0.99))
+294:b9|    ttt_k_lora = bool(int(os.environ.get("TTT_K_LORA", "1")))
+295:7c|    ttt_mlp_lora = bool(int(os.environ.get("TTT_MLP_LORA", "1")))
+296:34|    ttt_o_lora = bool(int(os.environ.get("TTT_O_LORA", "1")))
+297:26|    ttt_optimizer = os.environ.get("TTT_OPTIMIZER", "adam")
+298:00|    ttt_eval_batches = os.environ.get("TTT_EVAL_BATCHES", "")
+299:e9|    val_doc_fraction = float(os.environ.get("VAL_DOC_FRACTION", 1.0))
+300:c2|    compressor = os.environ.get("COMPRESSOR", "pergroup")
+301:23|    gptq_calibration_batches = int(os.environ.get("GPTQ_CALIBRATION_BATCHES", 16))
+302:e7|    gptq_reserve_seconds = float(os.environ.get("GPTQ_RESERVE_SECONDS", 0.5))
+303:0a|    phased_ttt_prefix_docs = int(os.environ.get("PHASED_TTT_PREFIX_DOCS", 2500))
+304:2a|    phased_ttt_num_phases = int(os.environ.get("PHASED_TTT_NUM_PHASES", 3))
+305:20|    global_ttt_lr = float(os.environ.get("GLOBAL_TTT_LR", 0.001))
+306:61|    global_ttt_momentum = float(os.environ.get("GLOBAL_TTT_MOMENTUM", 0.9))
+307:75|    global_ttt_epochs = int(os.environ.get("GLOBAL_TTT_EPOCHS", 1))
+308:13|    global_ttt_chunk_tokens = int(os.environ.get("GLOBAL_TTT_CHUNK_TOKENS", 32768))
+309:25|    global_ttt_batch_seqs = int(os.environ.get("GLOBAL_TTT_BATCH_SEQS", 32))
+310:e8|    global_ttt_warmup_start_lr = float(
+311:25|        os.environ.get("GLOBAL_TTT_WARMUP_START_LR", 0.0)
+312:5c|    )
+313:cc|    global_ttt_warmup_chunks = int(os.environ.get("GLOBAL_TTT_WARMUP_CHUNKS", 0))
+314:0f|    global_ttt_grad_clip = float(os.environ.get("GLOBAL_TTT_GRAD_CLIP", 1.0))
+315:f3|    global_ttt_respect_doc_boundaries = bool(
+316:fc|        int(os.environ.get("GLOBAL_TTT_RESPECT_DOC_BOUNDARIES", "1"))
+317:5c|    )
+318:15|    matrix_bits = int(os.environ.get("MATRIX_BITS", 6))
+319:59|    embed_bits = int(os.environ.get("EMBED_BITS", 7))
+320:c1|    matrix_clip_sigmas = float(os.environ.get("MATRIX_CLIP_SIGMAS", 12.85))
+321:fa|    embed_clip_sigmas = float(os.environ.get("EMBED_CLIP_SIGMAS", 14.0))
+322:31|    mlp_clip_sigmas = float(os.environ.get("MLP_CLIP_SIGMAS", 11.5))
+323:4f|    attn_clip_sigmas = float(os.environ.get("ATTN_CLIP_SIGMAS", 13.0))
+324:ea|    attn_out_gate_enabled = bool(int(os.environ.get("ATTN_OUT_GATE_ENABLED", "0")))
+
+... (3498 more lines)
+2026-05-05 03:07:20,918 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] read_file({'offset': 2260, 'path': 'main.py', 'limit': 100})
+2026-05-05 03:07:20,918 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=17572 response_tokens=321 total=17893
+2026-05-05 03:07:20,918 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] read_file | args: {'path': 'main.py', 'offset': 2260, 'limit': 100}
+2026-05-05 03:07:20,921 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] read_file | result: 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+2311:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+2312:a1|                result[name + ".lqA_a"] = qA
+2313:c9|                result[name + ".lqAs_a"] = sA
+2314:2f|                result[name + ".lqB_a"] = qB
+2315:37|                result[name + ".lqBs_a"] = sB
+2316:05|                meta[name] = meta[name] + "+lqer_asym"
+2317:ed|            else:
+2318:13|                qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+2319:6a|                result[name + ".lqA"] = qA
+2320:26|                result[name + ".lqAs"] = sA
+2321:0c|                result[name + ".lqB"] = qB
+2322:cc|                result[name + ".lqBs"] = sB
+2323:aa|                meta[name] = meta[name] + "+lqer"
+2324:7e|    categories = collections.defaultdict(set)
+2325:3c|    for name, cat in meta.items():
+2326:3c|        short = re.sub("\\.\\d+$", "", re.sub("blocks\\.\\d+", "blocks", name))
+2327:85|        categories[cat].add(short)
+2328:b9|    log("Quantized weights:")
+2329:84|    for cat in sorted(categories):
+2330:73|        log(f"  {cat}: {', '.join(sorted(categories[cat]))}")
+2331:f4|    return result, meta
+2332:d4|
+2333:d4|
+2334:22|def dequantize_mixed(result, meta, template_sd):
+2335:52|    out = {}
+2336:18|    for name, orig in template_sd.items():
+2337:06|        info = meta.get(name)
+2338:2d|        if info is None:
+2339:b0|            continue
+2340:36|        orig_dtype = orig.dtype
+2341:8d|        if "passthrough" in info:
+2342:81|            t = result[name]
+2343:07|            if t.dtype == torch.float16 and orig_dtype in (
+2344:c1|                torch.float32,
+2345:09|                torch.bfloat16,
+2346:8c|            ):
+2347:6b|                t = t.to(orig_dtype)
+2348:1f|            out[name] = t
+2349:b0|            continue
+2350:96|        if info == "gate_int8_row":
+2351:53|            gq = result[name + ".gq"]
+2352:fc|            gs = result[name + ".gs"]
+2353:17|            out[name] = (gq.float() * gs.float().view(-1, 1)).to(orig_dtype)
+2354:b0|            continue
+2355:6b|        q, s = result[name + ".q"], result[name + ".scale"]
+2356:04|        if s.ndim > 0:
+2357:d2|            W = q.float() * s.float().view(q.shape[0], *[1] * (q.ndim - 1))
+2358:a9|        else:
+2359:56|            W = q.float() * float(s.item())
+2360:b0|        if "lqer_asym" in info:
+
+... (1462 more lines)
+2026-05-05 03:07:20,922 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #7] Sending request to model (step 7)...
+2026-05-05 03:07:20,922 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] 2261:24|            dead = torch.diag(H) == 0
+2262:bb|            H[dead, dead] = 1
+2263:a5|            damp = 0.01 * H.diag().mean()
+2264:0d|            H.diagonal().add_(damp)
+2265:bc|            
+2266:86|            H_diag = H.diag()
+2267:1a|            H_diag_sqrt = torch.sqrt(H_diag)
+2268:62|            H_diag_inv_sqrt = 1.0 / H_diag_sqrt
+2269:bc|            
+2270:2a|            E_prime = E * H_diag_sqrt.unsqueeze(0)
+2271:28|            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)
+2272:ab|            r = min(h.lqer_rank, S.numel())
+2273:9b|            sqrt_S = torch.sqrt(S[:r])
+2274:d1|            A = (U[:, :r] * sqrt_S).contiguous()
+2275:ea|            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2276:9d|            B = (B_prime * H_diag_inv_sqrt.unsqueeze(0)).contiguous()
+2277:bc|            
+2278:c3|            iters = getattr(h, "lqer_als_iters", 2)
+2279:91|            if iters > 0:
+2280:22|                L = torch.linalg.cholesky(H)
+2281:e3|                L_inv = torch.linalg.inv(L)
+2282:d7|                if "tok_emb" in name:
+2283:e3|                    cs = h.embed_clip_sigmas
+2284:b5|                elif ".mlp." in name:
+2285:cf|                    cs = h.mlp_clip_sigmas
+2286:4c|                elif ".attn." in name:
+2287:bd|                    cs = h.attn_clip_sigmas
+2288:1c|                else:
+2289:1d|                    cs = h.matrix_clip_sigmas
+2290:6f|                bits = h.embed_bits if "tok_emb" in name else h.matrix_bits
+2291:5f|                clip_range = 2 ** (bits - 1) - 1
+2292:a9|                
+2293:54|                for _ in range(iters):
+2294:83|                    W_target = t_orig.float() - A @ B
+2295:2f|                    q, s = gptq_quantize_weight(
+2296:72|                        W_target, hessians[name], clip_sigmas=cs, clip_range=clip_range
+2297:15|                    )
+2298:da|                    W_q = q.float() * s.float().view(-1, 1)
+2299:e3|                    E_new = t_orig.float() - W_q
+2300:df|                    E_weighted = E_new @ L
+2301:7b|                    
+2302:8e|                    U, S, Vh = torch.linalg.svd(E_weighted, full_matrices=False)
+2303:c1|                    sqrt_S = torch.sqrt(S[:r])
+2304:3c|                    A = (U[:, :r] * sqrt_S).contiguous()
+2305:7f|                    B_w = (Vh[:r, :].T * sqrt_S).T.contiguous()
+2306:f1|                    B = (B_w @ L_inv).contiguous()
+2307:7b|                    
+2308:1b|                result[name + ".q"] = q
+2309:66|                result[name + ".scale"] = s
+2310:7a|            if asym_on and B.numel() % asym_g == 0:
+2311:80|                qA, sA, qB, sB = _lqer_pack_asym(A, B, asym_g)
+2312:a1|                result[name + ".lqA_a"] = qA
+2313:c9|                result[name + ".lqAs_a"] = sA
+2314:2f|                result[name + ".lqB_a"] = qB
+2315:37|                result[name + ".lqBs_a"] = sB
+2316:05|                meta[name] = meta[name] + "+lqer_asym"
+2317:ed|            else:
+2318:13|                qA, sA, qB, sB = _lqer_pack(A, B, h.lqer_factor_bits)
+2319:6a|                result[name + ".lqA"] = qA
+2320:26|                result[name + ".lqAs"] = sA
+2321:0c|                result[name + ".lqB"] = qB
+2322:cc|                result[name + ".lqBs"] = sB
+2323:aa|                meta[name] = meta[name] + "+lqer"
+2324:7e|    categories = collections.defaultdict(set)
+2325:3c|    for name, cat in meta.items():
+2326:3c|        short = re.sub("\\.\\d+$", "", re.sub("blocks\\.\\d+", "blocks", name))
+2327:85|        categories[cat].add(short)
+2328:b9|    log("Quantized weights:")
+2329:84|    for cat in sorted(categories):
+2330:73|        log(f"  {cat}: {', '.join(sorted(categories[cat]))}")
+2331:f4|    return result, meta
+2332:d4|
+2333:d4|
+2334:22|def dequantize_mixed(result, meta, template_sd):
+2335:52|    out = {}
+2336:18|    for name, orig in template_sd.items():
+2337:06|        info = meta.get(name)
+2338:2d|        if info is None:
+2339:b0|            continue
+2340:36|        orig_dtype = orig.dtype
+2341:8d|        if "passthrough" in info:
+2342:81|            t = result[name]
+2343:07|            if t.dtype == torch.float16 and orig_dtype in (
+2344:c1|                torch.float32,
+2345:09|                torch.bfloat16,
+2346:8c|            ):
+2347:6b|                t = t.to(orig_dtype)
+2348:1f|            out[name] = t
+2349:b0|            continue
+2350:96|        if info == "gate_int8_row":
+2351:53|            gq = result[name + ".gq"]
+2352:fc|            gs = result[name + ".gs"]
+2353:17|            out[name] = (gq.float() * gs.float().view(-1, 1)).to(orig_dtype)
+2354:b0|            continue
+2355:6b|        q, s = result[name + ".q"], result[name + ".scale"]
+2356:04|        if s.ndim > 0:
+2357:d2|            W = q.float() * s.float().view(q.shape[0], *[1] * (q.ndim - 1))
+2358:a9|        else:
+2359:56|            W = q.float() * float(s.item())
+2360:b0|        if "lqer_asym" in info:
+
+... (1462 more lines)
+2026-05-05 03:07:28,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': '3c5e7c71', 'status': 'completed'})
+2026-05-05 03:07:28,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=19794 response_tokens=598 total=20392
+2026-05-05 03:07:28,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '3c5e7c71', 'status': 'completed'}
+2026-05-05 03:07:28,013 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Find where H_diag_sqrt is computed and used in main.py' status to 'completed'
+2026-05-05 03:07:28,015 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #8] Sending request to model (step 8)...
+2026-05-05 03:07:28,015 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Find where H_diag_sqrt is computed and used in main.py' status to 'completed'
+2026-05-05 03:07:32,280 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] hashline_edit({'end_hash': 'e3', 'path': 'main.py', 'new_content': '            L = torch.linalg.cholesky(H)\n            L_inv = torch.linalg.inv(L)\n            \n            E_prime = E @ L\n            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)\n            r = min(h.lqer_rank, S.numel())\n            sqrt_S = torch.sqrt(S[:r])\n            A = (U[:, :r] * sqrt_S).contiguous()\n            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()\n            B = (B_prime @ L_inv).contiguous()\n            \n            iters = getattr(h, "lqer_als_iters", 2)\n            if iters > 0:', 'start_hash': '86', 'end_line': 2281, 'start_line': 2266})
+2026-05-05 03:07:32,280 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=19932 response_tokens=231 total=20163
+2026-05-05 03:07:32,281 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] hashline_edit | args: {'path': 'main.py', 'start_line': 2266, 'start_hash': '86', 'new_content': '            L = torch.linalg.cholesky(H)\n            L_inv = torch.linalg.inv(L)\n            \n            E_prime = E @ L\n            U, S, Vh = torch.linalg.svd(E_prime, full_matrices=False)\n            r = min(h.lqer_rank, S.numel())\n            sqrt_S = torch.sqrt(S[:r])\n            A = (U[:, :r] * sqrt_S).contiguous()\n            B_prime = (Vh[:r, :].T * sqrt_S).T.contiguous()\n            B = (B_prime @ L_inv).contiguous()\n            \n            iters = getattr(h, "lqer_als_iters", 2)\n            if iters > 0:', 'end_line': 2281, 'end_hash': 'e3', 'insert_after': False}
+2026-05-05 03:07:32,312 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] hashline_edit | result: Edited /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py: Replaced 16 line(s) with 13 line(s) at line 2266
+2026-05-05 03:07:32,314 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #9] Sending request to model (step 9)...
+2026-05-05 03:07:32,314 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Edited /rmeng_data/jiefengc-data/one-ai-scientist/parameter_golf_outputs/2026-05-04_03-36-45_parameter_golf.parameter_golf_parallel_explore_exploit/best_run/ablation/workspace/ablations/2_cholesky_weighted_svd_init/main.py: Replaced 16 line(s) with 13 line(s) at line 2266
+2026-05-05 03:07:35,345 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'in_progress', 'todo_id': '9f877e58'})
+2026-05-05 03:07:35,345 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=20302 response_tokens=38 total=20340
+2026-05-05 03:07:35,346 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '9f877e58', 'status': 'in_progress'}
+2026-05-05 03:07:35,346 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py' status to 'in_progress'
+2026-05-05 03:07:35,347 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #10] Sending request to model (step 10)...
+2026-05-05 03:07:35,347 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py' status to 'in_progress'
+2026-05-05 03:07:38,699 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'status': 'completed', 'todo_id': '9f877e58'})
+2026-05-05 03:07:38,699 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=20391 response_tokens=30 total=20421
+2026-05-05 03:07:38,700 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '9f877e58', 'status': 'completed'}
+2026-05-05 03:07:38,700 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py' status to 'completed'
+2026-05-05 03:07:38,701 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #11] Sending request to model (step 11)...
+2026-05-05 03:07:38,701 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Implement the ablation replacing H_diag_sqrt with full Cholesky factor L in main.py' status to 'completed'
+2026-05-05 03:07:41,742 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': '2ded2250', 'status': 'in_progress'})
+2026-05-05 03:07:41,742 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=20469 response_tokens=33 total=20502
+2026-05-05 03:07:41,743 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '2ded2250', 'status': 'in_progress'}
+2026-05-05 03:07:41,743 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run the modified main.py and ensure it runs without errors' status to 'in_progress'
+2026-05-05 03:07:41,744 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #12] Sending request to model (step 12)...
+2026-05-05 03:07:41,744 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Run the modified main.py and ensure it runs without errors' status to 'in_progress'
+2026-05-05 03:07:44,946 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] run_experiment({'main_script_path': 'main.py', 'env': {'MAX_WALLCLOCK_SECONDS': '60', 'ITERATIONS': '50'}})
+2026-05-05 03:07:44,946 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=20549 response_tokens=44 total=20593
+2026-05-05 03:07:44,947 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] run_experiment | args: {'main_script_path': 'main.py', 'env': {'MAX_WALLCLOCK_SECONDS': '60', 'ITERATIONS': '50'}}
+2026-05-05 03:40:14,830 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:40:14,831 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:40:28,585 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:40:28,585 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:42:15,693 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:42:15,694 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:42:20,559 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] run_experiment | result: Run 1/3
+Status: SUCCESS
+val_bpb: 2.49433913
+Artifact size: 15.76 MB (limit: 16.00 MB)
+Execution time: 1949s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17317527
+2/50 train_loss: 12.8364 train_time: 0.0m tok/s: 7172048
+3/50 train_loss: 10.2233 train_time: 0.0m tok/s: 7560776
+4/50 train_loss: 8.6827 train_time: 0.0m tok/s: 7776385
+5/50 train_loss: 7.9382 train_time: 0.0m tok/s: 7899556
+50/50 val_loss: 4.1651 val_bpb: 1.9032
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.85826327 val_bpb:3.59068649 eval_time:6412ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 128.5s
+Serialized model quantized+pergroup: 15730907 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.7s
+diagnostic quantized val_loss:7.86195525 val_bpb:3.59237347 eval_time:116729ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.6s
+ttt_compile_warmup: done in 224.5s
+
+Training Execution Time: 1209.5801753997803 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.1s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (110.4s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b782/782 bl:4.6376 bb:2.1960 rl:4.6376 rb:2.1960 dl:30339-97114 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:264.9s
+tttg: c1/131 lr:0.001000 t:4.3s
+tttg: c2/131 lr:0.001000 t:4.4s
+tttg: c3/131 lr:0.000999 t:4.5s
+tttg: c4/131 lr:0.000999 t:4.5s
+tttg: c5/131 lr:0.000998 t:4.6s
+tttg: c6/131 lr:0.000996 t:4.7s
+tttg: c7/131 lr:0.000995 t:4.8s
+tttg: c8/131 lr:0.000993 t:4.9s
+tttg: c9/131 lr:0.000991 t:5.0s
+tttg: c10/131 lr:0.000988 t:5.0s
+tttg: c11/131 lr:0.000985 t:5.1s
+tttg: c12/131 lr:0.000982 t:5.2s
+tttg: c13/131 lr:0.000979 t:5.3s
+tttg: c14/131 lr:0.000976 t:5.4s
+tttg: c15/131 lr:0.000972 t:5.4s
+tttg: c16/131 lr:0.000968 t:5.5s
+tttg: c17/131 lr:0.000963 t:5.6s
+tttg: c18/131 lr:0.000958 t:5.7s
+tttg: c19/131 lr:0.000953 t:5.8s
+tttg: c20/131 lr:0.000948 t:5.9s
+tttg: c21/131 lr:0.000943 t:5.9s
+tttg: c22/131 lr:0.000937 t:6.0s
+tttg: c23/131 lr:0.000931 t:6.1s
+tttg: c24/131 lr:0.000925 t:6.2s
+tttg: c25/131 lr:0.000918 t:6.3s
+tttg: c26/131 lr:0.000911 t:6.4s
+tttg: c27/131 lr:0.000905 t:6.4s
+tttg: c28/131 lr:0.000897 t:6.5s
+tttg: c29/131 lr:0.000890 t:6.6s
+tttg: c30/131 lr:0.000882 t:6.7s
+tttg: c31/131 lr:0.000874 t:6.8s
+tttg: c32/131 lr:0.000866 t:6.8s
+tttg: c33/131 lr:0.000858 t:6.9s
+tttg: c34/131 lr:0.000849 t:7.0s
+tttg: c35/131 lr:0.000841 t:7.1s
+tttg: c36/131 lr:0.000832 t:7.2s
+tttg: c37/131 lr:0.000822 t:7.3s
+tttg: c38/131 lr:0.000813 t:7.3s
+tttg: c39/131 lr:0.000804 t:7.4s
+tttg: c40/131 lr:0.000794 t:7.5s
+tttg: c41/131 lr:0.000784 t:7.6s
+tttg: c42/131 lr:0.000774 t:7.7s
+tttg: c43/131 lr:0.000764 t:7.7s
+tttg: c44/131 lr:0.000753 t:7.8s
+tttg: c45/131 lr:0.000743 t:7.9s
+tttg: c46/131 lr:0.000732 t:8.0s
+tttg: c47/131 lr:0.000722 t:8.1s
+tttg: c48/131 lr:0.000711 t:8.2s
+tttg: c49/131 lr:0.000700 t:8.2s
+tttg: c50/131 lr:0.000689 t:8.3s
+tttg: c51/131 lr:0.000677 t:8.4s
+tttg: c52/131 lr:0.000666 t:8.5s
+tttg: c53/131 lr:0.000655 t:8.6s
+tttg: c54/131 lr:0.000643 t:8.6s
+tttg: c55/131 lr:0.000631 t:8.7s
+tttg: c56/131 lr:0.000620 t:8.8s
+tttg: c57/131 lr:0.000608 t:8.9s
+tttg: c58/131 lr:0.000596 t:9.0s
+tttg: c59/131 lr:0.000584 t:9.1s
+tttg: c60/131 lr:0.000572 t:9.1s
+tttg: c61/131 lr:0.000560 t:9.2s
+tttg: c62/131 lr:0.000548 t:9.3s
+tttg: c63/131 lr:0.000536 t:9.4s
+tttg: c64/131 lr:0.000524 t:9.5s
+tttg: c65/131 lr:0.000512 t:9.5s
+tttg: c66/131 lr:0.000500 t:9.6s
+tttg: c67/131 lr:0.000488 t:9.7s
+tttg: c68/131 lr:0.000476 t:9.8s
+tttg: c69/131 l
+ ... [274 characters truncated] ... 
+tp: b582/782 bl:5.4503 bb:2.3940 rl:5.2903 rb:2.4090 dl:1056-1060 gd:1
+ttp: b571/782 bl:5.5009 bb:2.4064 rl:5.2945 rb:2.4090 dl:1014-1017 gd:1
+ttp: b563/782 bl:5.4325 bb:2.4412 rl:5.2971 rb:2.4096 dl:987-990 gd:1
+ttp: b555/782 bl:5.4441 bb:2.4023 rl:5.2998 rb:2.4094 dl:959-961 gd:1
+ttp: b550/782 bl:5.5179 bb:2.4688 rl:5.3036 rb:2.4105 dl:943-946 gd:1
+ttp: b542/782 bl:5.4713 bb:2.4432 rl:5.3065 rb:2.4111 dl:918-921 gd:1
+ttp: b533/782 bl:5.4543 bb:2.4536 rl:5.3088 rb:2.4118 dl:890-892 gd:1
+ttp: b525/782 bl:5.5073 bb:2.3869 rl:5.3119 rb:2.4114 dl:866-869 gd:1
+ttp: b514/782 bl:5.4116 bb:2.4982 rl:5.3133 rb:2.4126 dl:835-838 gd:1
+ttp: b507/782 bl:5.4226 bb:2.4280 rl:5.3149 rb:2.4128 dl:814-817 gd:1
+ttp: b502/782 bl:5.4489 bb:2.4145 rl:5.3167 rb:2.4128 dl:802-804 gd:1
+ttp: b495/782 bl:5.4238 bb:2.4227 rl:5.3181 rb:2.4130 dl:783-785 gd:1
+ttp: b487/782 bl:5.3742 bb:2.5163 rl:5.3188 rb:2.4142 dl:764-766 gd:1
+ttp: b479/782 bl:5.5030 bb:2.4726 rl:5.3211 rb:2.4150 dl:744-747 gd:1
+ttp: b471/782 bl:5.4721 bb:2.4707 rl:5.3228 rb:2.4156 dl:726-728 gd:1
+ttp: b462/782 bl:5.5259 bb:2.4527 rl:5.3251 rb:2.4160 dl:706-708 gd:1
+ttp: b455/782 bl:5.4662 bb:2.4635 rl:5.3267 rb:2.4166 dl:691-693 gd:1
+ttp: b447/782 bl:5.4393 bb:2.4987 rl:5.3279 rb:2.4174 dl:674-676 gd:1
+ttp: b438/782 bl:5.4406 bb:2.4829 rl:5.3290 rb:2.4181 dl:655-657 gd:1
+ttp: b430/782 bl:5.4980 bb:2.4041 rl:5.3307 rb:2.4179 dl:640-642 gd:1
+ttp: b422/782 bl:5.3799 bb:2.5387 rl:5.3311 rb:2.4190 dl:624-626 gd:1
+ttp: b416/782 bl:5.5268 bb:2.4301 rl:5.3329 rb:2.4192 dl:613-615 gd:1
+ttp: b411/782 bl:5.5120 bb:2.4739 rl:5.3346 rb:2.4196 dl:603-605 gd:1
+ttp: b405/782 bl:5.4869 bb:2.4623 rl:5.3359 rb:2.4200 dl:592-593 gd:1
+ttp: b396/782 bl:5.4173 bb:2.5482 rl:5.3366 rb:2.4211 dl:575-577 gd:1
+ttp: b390/782 bl:5.4992 bb:2.4776 rl:5.3379 rb:2.4215 dl:564-566 gd:1
+ttp: b382/782 bl:5.4519 bb:2.5758 rl:5.3388 rb:2.4227 dl:550-552 gd:1
+ttp: b374/782 bl:5.4773 bb:2.4692 rl:5.3399 rb:2.4231 dl:537-538 gd:1
+ttp: b366/782 bl:5.4433 bb:2.4936 rl:5.3406 rb:2.4236 dl:524-525 gd:1
+ttp: b358/782 bl:5.4874 bb:2.4627 rl:5.3417 rb:2.4239 dl:510-512 gd:1
+ttp: b350/782 bl:5.5323 bb:2.5143 rl:5.3430 rb:2.4245 dl:497-498 gd:1
+ttp: b343/782 bl:5.4142 bb:2.5479 rl:5.3435 rb:2.4253 dl:486-488 gd:1
+ttp: b335/782 bl:5.4861 bb:2.4853 rl:5.3444 rb:2.4257 dl:474-476 gd:1
+ttp: b327/782 bl:5.4447 bb:2.5316 rl:5.3451 rb:2.4264 dl:462-463 gd:1
+ttp: b319/782 bl:5.5377 bb:2.4971 rl:5.3463 rb:2.4268 dl:450-451 gd:1
+ttp: b311/782 bl:5.4870 bb:2.5291 rl:5.3471 rb:2.4274 dl:438-439 gd:1
+ttp: b304/782 bl:5.5061 bb:2.5255 rl:5.3480 rb:2.4280 dl:427-429 gd:1
+ttp: b297/782 bl:5.5464 bb:2.5061 rl:5.3491 rb:2.4284 dl:417-418 gd:1
+ttp: b290/782 bl:5.5017 bb:2.5201 rl:5.3499 rb:2.4289 dl:406-407 gd:1
+ttp: b282/782 bl:5.5104 bb:2.5431 rl:5.3508 rb:2.4295 dl:395-396 gd:1
+ttp: b274/782 bl:5.4801 bb:2.5474 rl:5.3514 rb:2.4301 dl:384-385 gd:1
+ttp: b270/782 bl:5.5234 bb:2.5272 rl:5.3523 rb:2.4305 dl:379-380 gd:1
+ttp: b262/782 bl:5.5514 bb:2.5970 rl:5.3533 rb:2.4313 dl:369-370 gd:1
+ttp: b254/782 bl:5.4978 bb:2.6063 rl:5.3539 rb:2.4321 dl:358-360 gd:1
+ttp: b246/782 bl:5.5163 bb:2.5784 rl:5.3547 rb:2.4327 dl:349-350 gd:1
+ttp: b238/782 bl:5.4209 bb:2.5855 rl:5.3550 rb:2.4334 dl:338-340 gd:1
+ttp: b228/782 bl:5.5523 bb:2.5850 rl:5.3558 rb:2.4340 dl:327-328 gd:1
+ttp: b220/782 bl:5.5781 bb:2.6393 rl:5.3567 rb:2.4348 dl:317-318 gd:1
+ttp: b212/782 bl:5.6474 bb:2.5780 rl:5.3578 rb:2.4354 dl:308-309 gd:1
+ttp: b204/782 bl:5.5691 bb:2.6131 rl:5.3586 rb:2.4360 dl:300-301 gd:1
+ttp: b196/782 bl:5.6473 bb:2.5771 rl:5.3597 rb:2.4365 dl:291-292 gd:1
+ttp: b187/782 bl:5.5978 bb:2.5867 rl:5.3605 rb:2.4370 dl:281-282 gd:1
+ttp: b179/782 bl:5.5001 bb:2.6220 rl:5.3610 rb:2.4377 dl:273-274 gd:1
+ttp: b171/782 bl:5.7071 bb:2.6317 rl:5.3622 rb:2.4383 dl:266-266 gd:1
+ttp: b163/782 bl:5.6329 bb:2.6538 rl:5.3630 rb:2.4390 dl:257-259 gd:1
+ttp: b155/782 bl:5.5772 bb:2.5786 rl:5.3637 rb:2.4394 dl:250-251 gd:1
+ttp: b147/782 bl:5.6596 bb:2.5741 rl:5.3646 rb:2.4398 dl:242-243 gd:1
+ttp: b136/782 bl:5.6391 bb:2.6515 rl:5.3654 rb:2.4404 dl:232-233 gd:1
+ttp: b129/782 bl:5.5686 bb:2.6678 rl:5.3659 rb:2.4410 dl:225-226 gd:1
+ttp: b123/782 bl:5.5811 bb:2.7137 rl:5.3665 rb:2.4417 dl:219-220 gd:1
+ttp: b115/782 bl:5.6856 bb:2.6907 rl:5.3673 rb:2.4423 dl:212-213 gd:1
+ttp: b106/782 bl:5.6017 bb:2.6964 rl:5.3679 rb:2.4429 dl:204-205 gd:1
+ttp: b98/782 bl:5.6948 bb:2.6721 rl:5.3687 rb:2.4434 dl:197-198 gd:1
+ttp: b89/782 bl:5.6834 bb:2.6263 rl:5.3694 rb:2.4438 dl:189-190 gd:1
+ttp: b81/782 bl:5.6967 bb:2.5853 rl:5.3701 rb:2.4441 dl:182-183 gd:1
+ttp: b74/782 bl:5.7393 bb:2.6634 rl:5.3709 rb:2.4446 dl:175-176 gd:1
+ttp: b65/782 bl:5.6220 bb:2.6665 rl:5.3714 rb:2.4450 dl:167-169 gd:1
+quantized_ttt_phased val_loss:5.45853860 val_bpb:2.49433913 eval_time:579572ms
+val_loss:5.45853860
+val_bpb:2.49433913
+total_eval_time:579.6s
+
+Evaluation Execution Time: 739.8838384151459 seconds
+
+
+STDERR:
+
+
+
+main.py is bug-free -- STOP and end your turn now. The official 3-seed averaged eval runs automatically.
+2026-05-05 03:42:20,560 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #13] Sending request to model (step 13)...
+2026-05-05 03:42:20,560 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Run 1/3
+Status: SUCCESS
+val_bpb: 2.49433913
+Artifact size: 15.76 MB (limit: 16.00 MB)
+Execution time: 1949s
+
+STDOUT:
+train_shards: 80
+val_tokens: 47851520
+model_params:35945671
+gptq:reserving 0.5s, effective=59500ms
+warmup_cu_buckets:64,128,192,256 iters_each:3
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+1/50 train_loss: 9.0087 train_time: 0.0m tok/s: 17317527
+2/50 train_loss: 12.8364 train_time: 0.0m tok/s: 7172048
+3/50 train_loss: 10.2233 train_time: 0.0m tok/s: 7560776
+4/50 train_loss: 8.6827 train_time: 0.0m tok/s: 7776385
+5/50 train_loss: 7.9382 train_time: 0.0m tok/s: 7899556
+50/50 val_loss: 4.1651 val_bpb: 1.9032
+peak memory allocated: 41559 MiB reserved: 41582 MiB
+ema:applying EMA weights
+diagnostic pre-quantization post-ema val_loss:7.85826327 val_bpb:3.59068649 eval_time:6412ms
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 2.7s
+Quantized weights:
+  gate_int8_row: blocks.attn.attn_gate_w
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.attn.c_q.weight
+  gptq (int7): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+Serialize: per-group lrzip compression...
+Serialize: per-group compression done in 128.5s
+Serialized model quantized+pergroup: 15730907 bytes
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.7s
+diagnostic quantized val_loss:7.86195525 val_bpb:3.59237347 eval_time:116729ms
+ttt_compile_warmup: starting (writes to inductor cache)
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.6s
+ttt_compile_warmup: done in 224.5s
+
+Training Execution Time: 1209.5801753997803 seconds
+val_tokens: 47851520
+Deserialize: per-group lrzip decompression...
+Deserialize: decompression done in 21.1s
+ttt_lora:warming up compile (random tokens, no val data)
+ttt_lora:compile warmup done (110.4s)
+
+beginning TTT eval timer
+ttt_phased: total_docs:50000 prefix_docs:2500 suffix_docs:47500 num_phases:3 boundaries:[833, 1666, 2500]
+ttp: b782/782 bl:4.6376 bb:2.1960 rl:4.6376 rb:2.1960 dl:30339-97114 gd:0
+ttpp: phase:1/3 pd:1296 gd:833 t:264.9s
+tttg: c1/131 lr:0.001000 t:4.3s
+tttg: c2/131 lr:0.001000 t:4.4s
+tttg: c3/131 lr:0.000999 t:4.5s
+tttg: c4/131 lr:0.000999 t:4.5s
+tttg: c5/131 lr:0.000998 t:4.6s
+tttg: c6/131 lr:0.000996 t:4.7s
+tttg: c7/131 lr:0.000995 t:4.8s
+tttg: c8/131 lr:0.000993 t:4.9s
+tttg: c9/131 lr:0.000991 t:5.0s
+tttg: c10/131 lr:0.000988 t:5.0s
+tttg: c11/131 lr:0.000985 t:5.1s
+tttg: c12/131 lr:0.000982 t:5.2s
+tttg: c13/131 lr:0.000979 t:5.3s
+tttg: c14/131 lr:0.000976 t:5.4s
+tttg: c15/131 lr:0.000972 t:5.4s
+tttg: c16/131 lr:0.000968 t:5.5s
+tttg: c17/131 lr:0.000963 t:5.6s
+tttg: c18/131 lr:0.000958 t:5.7s
+tttg: c19/131 lr:0.000953 t:5.8s
+tttg: c20/131 lr:0.000948 t:5.9s
+tttg: c21/131 lr:0.000943 t:5.9s
+tttg: c22/131 lr:0.000937 t:6.0s
+tttg: c23/131 lr:0.000931 t:6.1s
+tttg: c24/131 lr:0.000925 t:6.2s
+tttg: c25/131 lr:0.000918 t:6.3s
+tttg: c26/131 lr:0.000911 t:6.4s
+tttg: c27/131 lr:0.000905 t:6.4s
+tttg: c28/131 lr:0.000897 t:6.5s
+tttg: c29/131 lr:0.000890 t:6.6s
+tttg: c30/131 lr:0.000882 t:6.7s
+tttg: c31/131 lr:0.000874 t:6.8s
+tttg: c32/131 lr:0.000866 t:6.8s
+tttg: c33/131 lr:0.000858 t:6.9s
+tttg: c34/131 lr:0.000849 t:7.0s
+tttg: c35/131 lr:0.000841 t:7.1s
+tttg: c36/131 lr:0.000832 t:7.2s
+tttg: c37/131 lr:0.000822 t:7.3s
+tttg: c38/131 lr:0.000813 t:7.3s
+tttg: c39/131 lr:0.000804 t:7.4s
+tttg: c40/131 lr:0.000794 t:7.5s
+tttg: c41/131 lr:0.000784 t:7.6s
+tttg: c42/131 lr:0.000774 t:7.7s
+tttg: c43/131 lr:0.000764 t:7.7s
+tttg: c44/131 lr:0.000753 t:7.8s
+tttg: c45/131 lr:0.000743 t:7.9s
+tttg: c46/131 lr:0.000732 t:8.0s
+tttg: c47/131 lr:0.000722 t:8.1s
+tttg: c48/131 lr:0.000711 t:8.2s
+tttg: c49/131 lr:0.000700 t:8.2s
+tttg: c50/131 lr:0.000689 t:8.3s
+tttg: c51/131 lr:0.000677 t:8.4s
+tttg: c52/131 lr:0.000666 t:8.5s
+tttg: c53/131 lr:0.000655 t:8.6s
+tttg: c54/131 lr:0.000643 t:8.6s
+tttg: c55/131 lr:0.000631 t:8.7s
+tttg: c56/131 lr:0.000620 t:8.8s
+tttg: c57/131 lr:0.000608 t:8.9s
+tttg: c58/131 lr:0.000596 t:9.0s
+tttg: c59/131 lr:0.000584 t:9.1s
+tttg: c60/131 lr:0.000572 t:9.1s
+tttg: c61/131 lr:0.000560 t:9.2s
+tttg: c62/131 lr:0.000548 t:9.3s
+tttg: c63/131 lr:0.000536 t:9.4s
+tttg: c64/131 lr:0.000524 t:9.5s
+tttg: c65/131 lr:0.000512 t:9.5s
+tttg: c66/131 lr:0.000500 t:9.6s
+tttg: c67/131 lr:0.000488 t:9.7s
+tttg: c68/131 lr:0.000476 t:9.8s
+t
+ ... [288 characters truncated] ... 
+tp: b582/782 bl:5.4503 bb:2.3940 rl:5.2903 rb:2.4090 dl:1056-1060 gd:1
+ttp: b571/782 bl:5.5009 bb:2.4064 rl:5.2945 rb:2.4090 dl:1014-1017 gd:1
+ttp: b563/782 bl:5.4325 bb:2.4412 rl:5.2971 rb:2.4096 dl:987-990 gd:1
+ttp: b555/782 bl:5.4441 bb:2.4023 rl:5.2998 rb:2.4094 dl:959-961 gd:1
+ttp: b550/782 bl:5.5179 bb:2.4688 rl:5.3036 rb:2.4105 dl:943-946 gd:1
+ttp: b542/782 bl:5.4713 bb:2.4432 rl:5.3065 rb:2.4111 dl:918-921 gd:1
+ttp: b533/782 bl:5.4543 bb:2.4536 rl:5.3088 rb:2.4118 dl:890-892 gd:1
+ttp: b525/782 bl:5.5073 bb:2.3869 rl:5.3119 rb:2.4114 dl:866-869 gd:1
+ttp: b514/782 bl:5.4116 bb:2.4982 rl:5.3133 rb:2.4126 dl:835-838 gd:1
+ttp: b507/782 bl:5.4226 bb:2.4280 rl:5.3149 rb:2.4128 dl:814-817 gd:1
+ttp: b502/782 bl:5.4489 bb:2.4145 rl:5.3167 rb:2.4128 dl:802-804 gd:1
+ttp: b495/782 bl:5.4238 bb:2.4227 rl:5.3181 rb:2.4130 dl:783-785 gd:1
+ttp: b487/782 bl:5.3742 bb:2.5163 rl:5.3188 rb:2.4142 dl:764-766 gd:1
+ttp: b479/782 bl:5.5030 bb:2.4726 rl:5.3211 rb:2.4150 dl:744-747 gd:1
+ttp: b471/782 bl:5.4721 bb:2.4707 rl:5.3228 rb:2.4156 dl:726-728 gd:1
+ttp: b462/782 bl:5.5259 bb:2.4527 rl:5.3251 rb:2.4160 dl:706-708 gd:1
+ttp: b455/782 bl:5.4662 bb:2.4635 rl:5.3267 rb:2.4166 dl:691-693 gd:1
+ttp: b447/782 bl:5.4393 bb:2.4987 rl:5.3279 rb:2.4174 dl:674-676 gd:1
+ttp: b438/782 bl:5.4406 bb:2.4829 rl:5.3290 rb:2.4181 dl:655-657 gd:1
+ttp: b430/782 bl:5.4980 bb:2.4041 rl:5.3307 rb:2.4179 dl:640-642 gd:1
+ttp: b422/782 bl:5.3799 bb:2.5387 rl:5.3311 rb:2.4190 dl:624-626 gd:1
+ttp: b416/782 bl:5.5268 bb:2.4301 rl:5.3329 rb:2.4192 dl:613-615 gd:1
+ttp: b411/782 bl:5.5120 bb:2.4739 rl:5.3346 rb:2.4196 dl:603-605 gd:1
+ttp: b405/782 bl:5.4869 bb:2.4623 rl:5.3359 rb:2.4200 dl:592-593 gd:1
+ttp: b396/782 bl:5.4173 bb:2.5482 rl:5.3366 rb:2.4211 dl:575-577 gd:1
+ttp: b390/782 bl:5.4992 bb:2.4776 rl:5.3379 rb:2.4215 dl:564-566 gd:1
+ttp: b382/782 bl:5.4519 bb:2.5758 rl:5.3388 rb:2.4227 dl:550-552 gd:1
+ttp: b374/782 bl:5.4773 bb:2.4692 rl:5.3399 rb:2.4231 dl:537-538 gd:1
+ttp: b366/782 bl:5.4433 bb:2.4936 rl:5.3406 rb:2.4236 dl:524-525 gd:1
+ttp: b358/782 bl:5.4874 bb:2.4627 rl:5.3417 rb:2.4239 dl:510-512 gd:1
+ttp: b350/782 bl:5.5323 bb:2.5143 rl:5.3430 rb:2.4245 dl:497-498 gd:1
+ttp: b343/782 bl:5.4142 bb:2.5479 rl:5.3435 rb:2.4253 dl:486-488 gd:1
+ttp: b335/782 bl:5.4861 bb:2.4853 rl:5.3444 rb:2.4257 dl:474-476 gd:1
+ttp: b327/782 bl:5.4447 bb:2.5316 rl:5.3451 rb:2.4264 dl:462-463 gd:1
+ttp: b319/782 bl:5.5377 bb:2.4971 rl:5.3463 rb:2.4268 dl:450-451 gd:1
+ttp: b311/782 bl:5.4870 bb:2.5291 rl:5.3471 rb:2.4274 dl:438-439 gd:1
+ttp: b304/782 bl:5.5061 bb:2.5255 rl:5.3480 rb:2.4280 dl:427-429 gd:1
+ttp: b297/782 bl:5.5464 bb:2.5061 rl:5.3491 rb:2.4284 dl:417-418 gd:1
+ttp: b290/782 bl:5.5017 bb:2.5201 rl:5.3499 rb:2.4289 dl:406-407 gd:1
+ttp: b282/782 bl:5.5104 bb:2.5431 rl:5.3508 rb:2.4295 dl:395-396 gd:1
+ttp: b274/782 bl:5.4801 bb:2.5474 rl:5.3514 rb:2.4301 dl:384-385 gd:1
+ttp: b270/782 bl:5.5234 bb:2.5272 rl:5.3523 rb:2.4305 dl:379-380 gd:1
+ttp: b262/782 bl:5.5514 bb:2.5970 rl:5.3533 rb:2.4313 dl:369-370 gd:1
+ttp: b254/782 bl:5.4978 bb:2.6063 rl:5.3539 rb:2.4321 dl:358-360 gd:1
+ttp: b246/782 bl:5.5163 bb:2.5784 rl:5.3547 rb:2.4327 dl:349-350 gd:1
+ttp: b238/782 bl:5.4209 bb:2.5855 rl:5.3550 rb:2.4334 dl:338-340 gd:1
+ttp: b228/782 bl:5.5523 bb:2.5850 rl:5.3558 rb:2.4340 dl:327-328 gd:1
+ttp: b220/782 bl:5.5781 bb:2.6393 rl:5.3567 rb:2.4348 dl:317-318 gd:1
+ttp: b212/782 bl:5.6474 bb:2.5780 rl:5.3578 rb:2.4354 dl:308-309 gd:1
+ttp: b204/782 bl:5.5691 bb:2.6131 rl:5.3586 rb:2.4360 dl:300-301 gd:1
+ttp: b196/782 bl:5.6473 bb:2.5771 rl:5.3597 rb:2.4365 dl:291-292 gd:1
+ttp: b187/782 bl:5.5978 bb:2.5867 rl:5.3605 rb:2.4370 dl:281-282 gd:1
+ttp: b179/782 bl:5.5001 bb:2.6220 rl:5.3610 rb:2.4377 dl:273-274 gd:1
+ttp: b171/782 bl:5.7071 bb:2.6317 rl:5.3622 rb:2.4383 dl:266-266 gd:1
+ttp: b163/782 bl:5.6329 bb:2.6538 rl:5.3630 rb:2.4390 dl:257-259 gd:1
+ttp: b155/782 bl:5.5772 bb:2.5786 rl:5.3637 rb:2.4394 dl:250-251 gd:1
+ttp: b147/782 bl:5.6596 bb:2.5741 rl:5.3646 rb:2.4398 dl:242-243 gd:1
+ttp: b136/782 bl:5.6391 bb:2.6515 rl:5.3654 rb:2.4404 dl:232-233 gd:1
+ttp: b129/782 bl:5.5686 bb:2.6678 rl:5.3659 rb:2.4410 dl:225-226 gd:1
+ttp: b123/782 bl:5.5811 bb:2.7137 rl:5.3665 rb:2.4417 dl:219-220 gd:1
+ttp: b115/782 bl:5.6856 bb:2.6907 rl:5.3673 rb:2.4423 dl:212-213 gd:1
+ttp: b106/782 bl:5.6017 bb:2.6964 rl:5.3679 rb:2.4429 dl:204-205 gd:1
+ttp: b98/782 bl:5.6948 bb:2.6721 rl:5.3687 rb:2.4434 dl:197-198 gd:1
+ttp: b89/782 bl:5.6834 bb:2.6263 rl:5.3694 rb:2.4438 dl:189-190 gd:1
+ttp: b81/782 bl:5.6967 bb:2.5853 rl:5.3701 rb:2.4441 dl:182-183 gd:1
+ttp: b74/782 bl:5.7393 bb:2.6634 rl:5.3709 rb:2.4446 dl:175-176 gd:1
+ttp: b65/782 bl:5.6220 bb:2.6665 rl:5.3714 rb:2.4450 dl:167-169 gd:1
+quantized_ttt_phased val_loss:5.45853860 val_bpb:2.49433913 eval_time:579572ms
+val_loss:5.45853860
+val_bpb:2.49433913
+total_eval_time:579.6s
+
+Evaluation Execution Time: 739.8838384151459 seconds
+
+
+STDERR:
+
+
+
+main.py is bug-free -- STOP and end your turn now. The official 3-seed averaged eval runs automatically.
+2026-05-05 03:42:24,228 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] update_todo_status({'todo_id': '2ded2250', 'status': 'completed'})
+2026-05-05 03:42:24,228 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=27807 response_tokens=76 total=27883
+2026-05-05 03:42:24,228 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] update_todo_status | args: {'todo_id': '2ded2250', 'status': 'completed'}
+2026-05-05 03:42:24,228 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] update_todo_status | result: Updated todo 'Run the modified main.py and ensure it runs without errors' status to 'completed'
+2026-05-05 03:42:24,230 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #14] Sending request to model (step 14)...
+2026-05-05 03:42:24,230 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Updated todo 'Run the modified main.py and ensure it runs without errors' status to 'completed'
+2026-05-05 03:42:30,122 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] I have successfully implemented the ablation and verified that it runs without errors.
+
+Here is a summary of the changes made:
+1. I located the logic in `main.py` (lines 2266-2281) where the SVD scaling was being performed using `H_diag_sqrt`, which is the diagonal approximation to the Hessian.
+2. I replaced `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian `H` (i.e., `L = torch.linalg.cholesky(H)`).
+3. I modified the left scaling before the SVD to use `E_prime = E @ L`.
+4. I updated the unscaling of the right factor `B_prime` to use `B = B_prime @ torch.linalg.inv(L)`.
+5. I preserved the logic required for subsequent `lqer_als_iters` alternating least squares iterations, avoiding re-calculating the Cholesky factor `L` and its inverse.
+6. I ran the ablation experiment using reduced runtime parameters, confirming that the setup executes flawlessly without any tensor shape errors, memory issues, or logical bugs. The evaluation phase completed successfully and successfully generated a `val_bpb` of ~2.49.
+
+Since `main.py` is now bug-free, the system's orchestrator will automatically pick up this commit and run the official 3-seed averaged evaluation. No further action is required on my part.
+2026-05-05 03:42:30,122 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=27904 response_tokens=332 total=28236
+2026-05-05 04:25:24,330 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:25:24,331 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:25:35,501 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:25:35,501 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 04:27:05,669 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 04:27:05,670 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:08:01,675 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:08:01,677 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:08:11,772 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:08:11,772 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:12:08,923 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:12:08,924 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:54:43,353 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:54:43,354 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:54:56,226 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:54:56,226 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 05:56:14,752 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 05:56:14,753 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.

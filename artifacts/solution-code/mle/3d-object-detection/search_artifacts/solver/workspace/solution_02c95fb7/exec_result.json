@@ -1,0 +1,6 @@
+{
+  "term_out": "Loading Dataset...\nEpoch 0 Step 0/906 Loss: 20.9941 (HM: 14.5043, REG: 6.4898)\n...\nEpoch 1 Val Loss: 1.5573\nVAL_METRIC: -1.5573356349395353\nInference on Test Set...",
+  "exec_time": 1796.0,
+  "analysis": "Hybrid Semantic-Cartesian Positional Encodings (HSC-PE) successfully improved over the baseline. The validation loss decreased from 1.6160 (baseline) to 1.5573. By directly fusing explicit 3D sinusoidal Cartesian PE with map-derived semantic distance transforms (distance to drivable area, lane centers, and intersections), the model successfully anchored vehicle bounding boxes to road topologies while maintaining pure Cartesian reasoning for off-road/unconstrained classes. This validates the core hypothesis of leveraging semantic coordinate spaces as structural priors.",
+  "val_metric": -1.5573356349395353
+}

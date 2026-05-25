@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.7637, Val Acc: 0.5762\nEpoch 2 - Train Loss: 2.6758, Val Acc: 0.6588\nEpoch 3 - Train Loss: 2.2672, Val Acc: 0.6997\nEpoch 4 - Train Loss: 1.9167, Val Acc: 0.7272\nEpoch 5 - Train Loss: 1.6232, Val Acc: 0.7430\nEpoch 6 - Train Loss: 1.4334, Val Acc: 0.7509\nEpoch 7 - Train Loss: 1.3520, Val Acc: 0.7516\nVAL_METRIC: 0.2484",
+  "exec_time": 2214.0,
+  "analysis": "Ablation with soft Multiplicative Fusion: S = V_norm * (T ** 0.5). Achieved 75.16% validation accuracy. Softening the taxonomic mask degraded performance further compared to strict multiplication (75.43%) or pure visual (75.65%). Overall, masking or combining visual prototypes with taxonomic metadata consistently underperforms simply relying completely on the multi-layer visual prototypes (alpha=1.0).",
+  "val_metric": 0.2484
+}

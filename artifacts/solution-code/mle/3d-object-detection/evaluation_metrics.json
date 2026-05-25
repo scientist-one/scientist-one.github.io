@@ -1,0 +1,19 @@
+{
+  "competition_id": "3d-object-detection-for-autonomous-vehicles",
+  "score": 0.17634,
+  "gold_threshold": 0.139,
+  "silver_threshold": 0.053,
+  "bronze_threshold": 0.046,
+  "median_threshold": 0.042,
+  "any_medal": true,
+  "gold_medal": true,
+  "silver_medal": false,
+  "bronze_medal": false,
+  "above_median": true,
+  "submission_exists": true,
+  "valid_submission": true,
+  "is_lower_better": false,
+  "created_at": "2026-04-28T16:37:30.759466",
+  "submission_path": "/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-04-27_18-03-08_mle_bench.3d-object-detection-for-autonomous-vehicles_parallel_explore_exploit/trajectory/i04.b2.02_mle_deep_agent/workspace/solution_final/submission.csv",
+  "success": true
+}

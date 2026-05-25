@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6673739477138044\nBest threshold: 0.5499999999999998",
+  "exec_time": 1522.0,
+  "analysis": "Tested ASL baseline without the data-driven hierarchical penalty (lambda_hier=0.0).\nResult: VAL_METRIC = 0.6673, which is better than the ASL+Hierarchical run (0.6661).\nConclusion: The data-driven hierarchical penalty degraded performance. Also, ASL with gamma_neg=4.0 underperforms compared to the previous iteration's Normalized Symmetric Focal Loss with gamma=1.0 and weight normalization (which scored 0.6738).\nThe normalization technique and higher LR (2e-3) from the previous iteration seem crucial.",
+  "val_metric": 0.667373947713804
+}

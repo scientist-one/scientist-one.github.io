@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6786765205737207\nBest threshold: 0.30999999999999994",
+  "exec_time": 2503.0,
+  "analysis": "Tested DINOv2 feature extraction at an increased resolution of 448x448 (from 336x336). The extracted 1024 patches were average-pooled and concatenated with the CLS token (still a 3072-D representation) and trained with the standard Normalized Focal Loss.\nResult: 0.6786.\nConclusion: Scaling up the native spatial resolution massively boosts the baseline focal loss model (0.6740 -> 0.6786). This is the best individual improvement found, beating the 336x336 Normalized ASL model (0.6773). High-res patch semantics explicitly help multi-label classification.",
+  "val_metric": 0.67867652057372
+}

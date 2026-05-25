@@ -1,0 +1,6 @@
+
+Iteration 4:
+- Solution ID: 57cb5153
+- Hypothesis/Change: Introduce a MarginRankingLoss to explicitly enforce that the correct boundary receives a higher similarity score than other boundaries, augmenting the Cross Entropy loss. In addition, scaled the training data to 50,000 notebooks.
+- Results: Validation Kendall tau score = 0.8437 (vs 0.8381 before).
+- Takeaway: Combining the classification and ranking loss guides the CodeBERT embeddings to form a strictly separable embedding space for optimal boundary matching. Scaling up the data continues to yield solid improvements with no signs of overfitting.

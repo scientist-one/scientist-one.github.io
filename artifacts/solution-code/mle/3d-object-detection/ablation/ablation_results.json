@@ -1,0 +1,94 @@
+[
+  {
+    "name": "no_semantic_pe",
+    "description": "Disable the semantic component of the HSC-PE module by returning only the Cartesian positional encoding (c_emb) instead of the gated hybrid encoding.",
+    "metrics": {
+      "competition_id": "3d-object-detection-for-autonomous-vehicles",
+      "score": 0.17462,
+      "gold_threshold": 0.139,
+      "silver_threshold": 0.053,
+      "bronze_threshold": 0.046,
+      "median_threshold": 0.042,
+      "any_medal": true,
+      "gold_medal": true,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": true,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:49:59.173700",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.3d-object-detection-for-autonomous-vehicles_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_no_semantic_pe/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "no_cartesian_pe",
+    "description": "Disable the Cartesian positional encoding in the HSC-PE module and return only the semantic distance embedding (s_emb).",
+    "metrics": {
+      "competition_id": "3d-object-detection-for-autonomous-vehicles",
+      "score": 0.16706,
+      "gold_threshold": 0.139,
+      "silver_threshold": 0.053,
+      "bronze_threshold": 0.046,
+      "median_threshold": 0.042,
+      "any_medal": true,
+      "gold_medal": true,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": true,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:50:16.452763",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.3d-object-detection-for-autonomous-vehicles_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/2_no_cartesian_pe/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "no_dynamic_gating",
+    "description": "Remove the learnable gating mechanism (alpha) in the HSC-PE module and fuse the semantic and Cartesian embeddings using simple addition (e.g., s_emb + c_emb).",
+    "metrics": {
+      "competition_id": "3d-object-detection-for-autonomous-vehicles",
+      "score": 0.1706,
+      "gold_threshold": 0.139,
+      "silver_threshold": 0.053,
+      "bronze_threshold": 0.046,
+      "median_threshold": 0.042,
+      "any_medal": true,
+      "gold_medal": true,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": true,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:49:55.745796",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.3d-object-detection-for-autonomous-vehicles_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/3_no_dynamic_gating/submission.csv",
+      "success": true
+    }
+  },
+  {
+    "name": "raw_map_pe",
+    "description": "Remove the Euclidean distance transform when generating the semantic distance features, feeding the raw binary map masks directly as the semantic positional encoding.",
+    "metrics": {
+      "competition_id": "3d-object-detection-for-autonomous-vehicles",
+      "score": 0.17657,
+      "gold_threshold": 0.139,
+      "silver_threshold": 0.053,
+      "bronze_threshold": 0.046,
+      "median_threshold": 0.042,
+      "any_medal": true,
+      "gold_medal": true,
+      "silver_medal": false,
+      "bronze_medal": false,
+      "above_median": true,
+      "submission_exists": true,
+      "valid_submission": true,
+      "is_lower_better": false,
+      "created_at": "2026-04-28T21:49:21.059355",
+      "submission_path": "/home/jiefengc_google_com/Projects/one-ai-scientist/experiments/mle_bench/results/2026-04-27_18-03-08_mle_bench.3d-object-detection-for-autonomous-vehicles_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/4_raw_map_pe/submission.csv",
+      "success": true
+    }
+  }
+]

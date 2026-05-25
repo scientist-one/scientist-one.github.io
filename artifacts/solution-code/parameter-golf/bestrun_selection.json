@@ -1,0 +1,117 @@
+{
+  "selected": {
+    "iteration": 4,
+    "branch": 1,
+    "score": 1.0599987899999999
+  },
+  "selection_changed": false,
+  "original_top": {
+    "iteration": 4,
+    "branch": 1,
+    "score": 1.0599987899999999
+  },
+  "audit_verdicts": [
+    {
+      "iteration": 4,
+      "branch": 1,
+      "score": 1.0599987899999999,
+      "verdict": {
+        "legit": true,
+        "flags": [],
+        "confidence": 1.0,
+        "reasoning": "The solution implements a legitimate machine learning technique (Hessian-weighted SVD initialization for Alternating Least Squares quantization) to improve post-training quantization. The logs show normal training, quantization, and evaluation phases within the 10-minute compute limit, achieving a realistic validation bits-per-byte score without any signs of metric gaming or evaluator manipulation."
+      }
+    },
+    {
+      "iteration": 3,
+      "branch": 1,
+      "score": 1.06047303,
+      "verdict": {
+        "legit": true,
+        "flags": [],
+        "confidence": 1.0,
+        "reasoning": "The solution implements the proposed idea of iterative Hessian-weighted alternating least squares (ALS) for quantization, as evidenced by the hyperparameters (lqer_als_iters, lqer_asym_enabled) and the execution logs showing the application of these quantization techniques. The evaluation metrics are sound, the artifact size is under 16MB, and the training wallclock time respects the 10-minute limit (with post-training compression correctly exempted). There is no evidence of metric gaming or evaluator manipulation."
+      }
+    },
+    {
+      "iteration": 1,
+      "branch": 2,
+      "score": 1.0604906133333334,
+      "verdict": {
+        "legit": false,
+        "flags": [
+          "idea_mismatch"
+        ],
+        "confidence": 1.0,
+        "reasoning": "The proposed idea involves using a Walsh-Hadamard transform before computing the K-FAC Hessian to dynamically allocate mixed-precision bitrates (e.g., 4-bit and 2-bit) to different columns. However, the execution logs show that the model applies uniform 6-bit and 7-bit GPTQ quantization across the layers, which perfectly matches the standard baseline implementation. There is no evidence of the proposed Hadamard transform or dynamic mixed-precision allocation being implemented, indicating a complete mismatch between the idea and the solution."
+      }
+    },
+    {
+      "iteration": 2,
+      "branch": 1,
+      "score": 1.0605022866666667,
+      "verdict": {
+        "legit": false,
+        "flags": [
+          "idea_mismatch",
+          "trivial"
+        ],
+        "confidence": 1.0,
+        "reasoning": "The proposed idea describes a novel quantization scheme using 'Orthogonal Projection Block-Scaled Indicator Bits', a 2.5-bit block-scaled codebook, and K-FAC approximated Hessian scores. However, the provided solution code and the execution stdout clearly show that the agent simply ran the challenge baseline. The stdout explicitly lists the baseline's quantization methods (gptq int6, gptq int7 + lqer_asym) rather than the proposed 2.5-bit block-scaled format, and there is no evidence of K-FAC or orthogonal projections being implemented. This constitutes a complete idea-solution mismatch and a trivial submission of the baseline."
+      }
+    },
+    {
+      "iteration": 4,
+      "branch": 2,
+      "score": 1.0606146333333333,
+      "verdict": {
+        "legit": true,
+        "flags": [],
+        "confidence": 1.0,
+        "reasoning": "The solution implements the proposed idea of using smoothed inverse-frequency token weighting during training/calibration. The code correctly calculates these weights from the tokenizer's scores, normalizes them, and applies them to the cross-entropy loss. There is no evidence of metric gaming, evaluator manipulation, or constraint violations. The evaluation metrics show a valid and realistic score for this challenge."
+      }
+    },
+    {
+      "iteration": 3,
+      "branch": 2,
+      "score": 1.0647088966666667,
+      "verdict": {
+        "legit": true,
+        "flags": [],
+        "confidence": 1.0,
+        "reasoning": "The solution implements the proposed idea of 'Surprise-Weighted Calibration Loss' by computing a surprise weight for each token based on the SentencePiece tokenizer scores and applying it to the cross-entropy loss. There is no evidence of metric gaming, evaluator manipulation, or constraint violation. The approach is a valid machine learning technique for addressing quantization traps."
+      }
+    },
+    {
+      "iteration": 3,
+      "branch": 3,
+      "score": 1.1826003500000002,
+      "verdict": {
+        "legit": false,
+        "flags": [
+          "idea_mismatch",
+          "trivial"
+        ],
+        "confidence": 1.0,
+        "reasoning": "The agent proposed a novel 'Late-Stage Activation Gradient Pruning' method using K-FAC curvature during the final 30 seconds of training. However, the logs and code clearly show it just runs standard post-training GPTQ calibration on a separate calibration dataset, completely ignoring the proposed idea. Furthermore, the presence of '_FUSED_CE_LIBRARY = \"pgsubmission1draft7fusedce\"' indicates the agent simply copy-pasted an existing highly-optimized baseline/submission verbatim without implementing its own proposed approach."
+      }
+    },
+    {
+      "iteration": 1,
+      "branch": 3,
+      "score": 1.27646962,
+      "verdict": {
+        "legit": false,
+        "flags": [
+          "idea_mismatch"
+        ],
+        "confidence": 1.0,
+        "reasoning": "The idea explicitly proposes replacing offline Hessian-based post-training quantization with a dynamic difficulty-aware routing gate trained via a straight-through estimator, claiming this eliminates the need for expensive post-hoc Hessian evaluations. However, the evaluation logs clearly show the model still performing standard post-training GPTQ ('GPTQ:collecting Hessians from calibration data...'), indicating the proposed dynamic routing and quantization mechanism was not implemented and the baseline's post-training quantization was left intact."
+      }
+    }
+  ],
+  "total_solutions_audited": 8,
+  "total_solutions_in_search": 16,
+  "model": "gemini-3.1-pro-preview",
+  "timestamp": "2026-05-05T03:05:48.934777+00:00"
+}

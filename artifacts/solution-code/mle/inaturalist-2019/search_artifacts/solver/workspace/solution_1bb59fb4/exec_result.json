@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 4.3478, Val Acc: 0.5723\nEpoch 2 - Train Loss: 3.1780, Val Acc: 0.6532\nEpoch 3 - Train Loss: 2.6728, Val Acc: 0.6950\nEpoch 4 - Train Loss: 2.2294, Val Acc: 0.7220\nEpoch 5 - Train Loss: 1.8502, Val Acc: 0.7415\nEpoch 6 - Train Loss: 1.5944, Val Acc: 0.7479\nEpoch 7 - Train Loss: 1.4851, Val Acc: 0.7487\nVAL_METRIC: 0.2513",
+  "exec_time": 2291.0,
+  "analysis": "Ablation with beta=2.0 (higher margin) and alpha=0.5. Achieved 74.87% val accuracy, which is lower than beta=1.0 (75.30%) but still higher than the 74.49% baseline. This confirms that while the margin helps separate confusing classes, over-penalizing similarity can cause the model to lose overall accuracy.",
+  "val_metric": 0.2513
+}

@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.6252, Val Acc: 0.5858\nEpoch 2 - Train Loss: 2.6480, Val Acc: 0.6502\nEpoch 3 - Train Loss: 2.2449, Val Acc: 0.6922\nEpoch 4 - Train Loss: 1.9016, Val Acc: 0.7255\nEpoch 5 - Train Loss: 1.6094, Val Acc: 0.7426\nEpoch 6 - Train Loss: 1.4248, Val Acc: 0.7520\nEpoch 7 - Train Loss: 1.3440, Val Acc: 0.7543\nVAL_METRIC: 0.2457",
+  "exec_time": 2241.0,
+  "analysis": "Ablation with pure Multiplicative Fusion: S = V_norm * T. Achieved 75.43% val accuracy. This drops performance relative to pure visual (75.65%), but is better than the linear combination alpha=0.5 (75.30%). The strict T=0 mask for different kingdoms does remove some spurious correlations but might overly penalize useful visual margin gradients.",
+  "val_metric": 0.2457
+}

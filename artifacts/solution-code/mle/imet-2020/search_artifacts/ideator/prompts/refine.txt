@@ -1,0 +1,55 @@
+You are refining an existing research idea that showed promise.
+
+## Problem
+
+
+## Previous idea
+**Title**: Data-Driven Hierarchical Asymmetric Loss for Noisy Multi-Label Classification
+**Hypothesis**: By replacing rigid mutual exclusivity with Asymmetric Loss (ASL) and soft data-driven co-occurrence penalties, the model will robustly handle crowdsourced false negatives without degrading from brittle ontological rules.
+**Score**: 0.6743 (success)
+
+## Evaluation details
+```json
+{
+  "competition_id": "imet-2020-fgvc7",
+  "score": 0.67429,
+  "gold_threshold": 0.696,
+  "silver_threshold": 0.649,
+  "bronze_threshold": 0.649,
+  "median_threshold": 0.627,
+  "any_medal": true,
+  "gold_medal": false,
+  "silver_medal": true,
+  "bronze_medal": false,
+  "above_median": true,
+  "submission_exists": true,
+  "valid_submission": true,
+  "is_lower_better": false,
+  "created_at": "2026-04-28T13:04:56.952789",
+  "submission_path": "/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-04-27_18-03-08_mle_bench.imet-2020-fgvc7_parallel_explore_exploit/trajectory/i03.b1.02_mle_deep_agent/workspace/solution_final/submission.csv",
+  "success": true
+}
+```
+
+## Your task
+This idea was one of the top performers. Refine it conservatively:
+- Keep the core insight that worked
+- Fix weaknesses revealed by the evaluation
+- Make targeted improvements, not wholesale changes
+- If the score was good, focus on robustness and edge cases
+- If the score was mediocre, identify the bottleneck and address it
+
+Output a YAML block with these fields:
+```yaml
+idea:
+  Name: short_snake_case_name
+  Title: Refined idea title
+  Short Hypothesis: One-sentence hypothesis
+  Abstract: 2-3 sentence abstract
+  Experiments:
+    - hypothesis: what to test
+      experiment_plan_steps:
+        - step 1
+        - step 2
+  Risk Factors and Limitations: key risks
+```

@@ -1,0 +1,287 @@
+2026-05-05 03:06:02,936 - google_genai._api_client - WARNING - Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2026-05-05 03:06:02,936 - google_genai._api_client - INFO - The user provided project/location will take precedence over the Vertex AI API key from the environment variable.
+2026-05-05 03:06:02,989 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #1] Sending request to model (step 1)...
+2026-05-05 03:06:02,989 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [user-prompt] You are analyzing a successful Parameter Golf solution.
+Task Description:
+
+
+Original Idea:
+idea:
+  Name: hessian_weighted_svd_als
+  Title: Hessian-Weighted SVD Initialization for Alternating Least Squares Quantization
+  Short Hypothesis: Initializing the low-rank factors in ALS using a Hessian-weighted
+    Singular Value Decomposition aligns the starting point with the true loss landscape,
+    leading to a superior joint optimum and lower quantization error.
+  Abstract: The previous Hessian-Weighted Alternating Least Squares (ALS) method successfully
+    minimized quantization error by iteratively updating continuous low-rank projections
+    and discrete weights. However, its initialization relies on standard SVD, which
+    optimizes unweighted mean squared error—creating a mismatch with the true Hessian-weighted
+    objective. We propose scaling the initial quantization error matrix by the square
+    root of the Hessian diagonal prior to SVD. Unscaling the resulting factors provides
+    an optimal rank-K initialization for the exact weighted objective, accelerating
+    ALS convergence and yielding a better final assignment of orthogonal indicator
+    bits.
+  Experiments:
+  - hypothesis: Hessian-weighted SVD initialization will lower the initial and final
+      weighted quantization error, outperforming unweighted SVD initialization.
+    experiment_plan_steps:
+    - Extract the diagonal of the Hessian matrix, $H_{diag}$, used during the calibration
+      phase for the target layer (e.g., `mlp.fc` or `tok_emb`).
+    - Add a small epsilon $\epsilon$ to $H_{diag}$ to ensure strict positivity and
+      numerical stability.
+    - Before the first ALS iteration, scale the initial error matrix $E = (W - W_q)$
+      by $H_{diag}^{1/2}$ to form $E' = E \cdot H_{diag}^{1/2}$.
+    - Perform truncated SVD on $E'$ to obtain the optimal factors $L$ and $R'$.
+    - Reverse the scaling to get the initial right factor: $R = R' \cdot H_{diag}^{-1/2}$.
+    - Proceed with the existing Hessian-weighted Alternating Least Squares loop.
+  Risk Factors and Limitations:
+  - The diagonal approximation of the Hessian ignores off-diagonal dependencies. While
+    usually sufficient for scaling, it is a simplification of the full inverse-Hessian
+    used in exact GPTQ updates.
+  - Dividing by $H_{diag}^{1/2}$ could introduce numerical instabilities if some features
+    have near-zero Hessian values; $\epsilon$-smoothing requires careful tuning.
+  - If the original ALS process was already reaching the global optimum regardless
+    of initialization, the overall BPB improvement may be marginal, though it could
+    still reliably reduce the required number of ALS iterations.
+scores:
+  overall: 7.95
+
+
+Best `main.py` Code:
+```python
+import argparse, base64, collections, copy, fcntl, glob, io, lzma, math, os, sys
+from pathlib import Path
+import random, re, subprocess, time, uuid, numpy as np, sentencepiece as spm, torch, torch.distributed as dist, torch.nn.functional as F
+from torch import Tensor, nn
+from flash_attn_interface import (
+    flash_attn_func as flash_attn_3_func,
+    flash_attn_varlen_func,
+)
+from concurrent.futures import ThreadPoolExecutor
+import triton
+import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
+
+os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", "/workspace/.torch_inductor")
+
+# ===== Fused softcapped CE (Triton) =====
+_FUSED_CE_LIBRARY = "pgsubmission1draft7fusedce"
+_FUSED_CE_BLOCK_SIZE = 1024
+_FUSED_CE_NUM_WARPS = 4
+
+
+@triton.jit
+def _softcapped_ce_fwd_kernel(
+    logits_ptr,
+    losses_ptr,
+    lse_ptr,
+    targets_ptr,
+    stride_logits_n,
+    stride_logits_v,
+    n_rows,
+    n_cols,
+    softcap,
+    block_size: tl.constexpr,
+):
+    row_idx = tl.program_id(0).to(tl.int64)
+    logits_row_ptr = logits_ptr + row_idx * stride_logits_n
+    max_val = -float("inf")
+    sum_exp = 0.0
+    A = 2.0 * softcap
+    inv_C = 2.0 / softcap
+    for off in range(0, n_cols, block_size):
+        cols = off + tl.arange(0, block_size)
+        mask = cols < n_cols
+        val = tl.load(
+            logits_row_ptr + cols * stride_logits_v, mask=mask, other=-float("inf")
+        ).to(tl.float32)
+        z = A * tl.sigmoid(val * inv_C)
+        z = tl.where(mask, z, -float("inf"))
+        curr_max = tl.max(z, axis=0)
+        new_max = tl.maximum(max_val, curr_max)
+        sum_exp = sum_exp * tl.exp(max_val - new_max) + tl.sum(
+            tl.exp(z - new_max), axis=0
+        )
+        max_val = new_max
+    lse = max_val + tl.log(sum_exp)
+    tl.store(lse_ptr + row_idx, lse)
+    target = tl.load(targets_ptr + row_idx).to(tl.int32)
+    target_val = tl.load(logits_row_ptr + target * stride_logits_v).to(tl.float32)
+    target_z = A * tl.sigmoid(target_val * inv_C)
+    tl.store(losses_ptr + row_idx, lse - target_z)
+
+
+@triton.jit
+def _softcapped_ce_bwd_kernel(
+    grad_logits_ptr,
+    grad_losses_ptr,
+    lse_ptr,
+    logits_ptr,
+    targets_ptr,
+    stride_logits_n,
+    stride_logits_v,
+    stride_gra
+ ... [141879 characters truncated] ... 
+    _yarn_seqlen = h.train_batch_tokens // h.grad_accum_steps
+        for block in ttt_model.blocks:
+            block.attn.rotary(_yarn_seqlen, device, torch.bfloat16)
+    else:
+        for block in ttt_model.blocks:
+            block.attn.rotary._cos_cached = None
+            block.attn.rotary._sin_cached = None
+            block.attn.rotary._seq_len_cached = 0
+            block.attn.rotary(h.ttt_eval_seq_len, device, torch.bfloat16)
+
+    def _fwd_ttt_inner(input_ids, target_ids, lora):
+        return ttt_model.forward_ttt(input_ids, target_ids, lora=lora)
+
+    _fwd_ttt_compiled_inner = None
+
+    def _fwd_ttt(input_ids, target_ids, lora):
+        nonlocal _fwd_ttt_compiled_inner
+        if _fwd_ttt_compiled_inner is None:
+            _fwd_ttt_compiled_inner = torch.compile(_fwd_ttt_inner, dynamic=True)
+        return _fwd_ttt_compiled_inner(input_ids, target_ids, lora=lora)
+
+    log("ttt_lora:warming up compile (random tokens, no val data)")
+    global BOS_ID
+    if BOS_ID is None:
+        BOS_ID = 1
+    t_warmup = time.perf_counter()
+    bsz = h.ttt_batch_size
+    wl = BatchedTTTLoRA(
+        bsz,
+        ttt_model,
+        h.ttt_lora_rank,
+        k_lora=h.ttt_k_lora,
+        mlp_lora=h.ttt_mlp_lora,
+        o_lora=h.ttt_o_lora,
+    ).to(device)
+    wo = torch.optim.AdamW(
+        wl.parameters(),
+        lr=h.ttt_lora_lr,
+        betas=(h.ttt_beta1, h.ttt_beta2),
+        eps=1e-10,
+        weight_decay=h.ttt_weight_decay,
+        fused=True,
+    )
+    for ctx_len in (h.ttt_chunk_size, h.ttt_eval_seq_len):
+        xw = torch.randint(
+            0, h.vocab_size, (bsz, ctx_len), device=device, dtype=torch.int64
+        )
+        yw = torch.randint(
+            0, h.vocab_size, (bsz, ctx_len), device=device, dtype=torch.int64
+        )
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            ptl = _fwd_ttt(xw, yw, lora=wl)
+        ptl[:, : min(h.ttt_chunk_size, ctx_len)].mean(dim=-1).sum().backward()
+        wo.step()
+        wo.zero_grad(set_to_none=True)
+    del wl, wo
+    torch.cuda.empty_cache()
+    log(f"ttt_lora:compile warmup done ({time.perf_counter()-t_warmup:.1f}s)")
+    log("\nbeginning TTT eval timer")
+    torch.cuda.synchronize()
+    t_ttt = time.perf_counter()
+    ttt_val_loss, ttt_val_bpb = eval_val_ttt_phased(
+        h, ttt_model, device, val_data, forward_ttt_train=_fwd_ttt
+    )
+    torch.cuda.synchronize()
+    ttt_eval_elapsed = time.perf_counter() - t_ttt
+    log(
+        f"quantized_ttt_phased val_loss:{ttt_val_loss:.8f} val_bpb:{ttt_val_bpb:.8f} eval_time:{1e3*ttt_eval_elapsed:.0f}ms"
+    )
+    if h.is_main_process:
+        print(f"val_loss:{ttt_val_loss:.8f}", flush=True)
+        print(f"val_bpb:{ttt_val_bpb:.8f}", flush=True)
+        print(f"total_eval_time:{ttt_eval_elapsed:.1f}s", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["train", "eval"], required=True)
+    args = parser.parse_args()
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required")
+    device = torch.device("cuda", local_rank)
+    torch.cuda.set_device(device)
+    if distributed:
+        dist.init_process_group(backend="nccl", device_id=device)
+        dist.barrier()
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.set_float32_matmul_precision("high")
+    from torch.backends.cuda import (
+        enable_cudnn_sdp,
+        enable_flash_sdp,
+        enable_math_sdp,
+        enable_mem_efficient_sdp,
+    )
+
+    enable_cudnn_sdp(False)
+    enable_flash_sdp(True)
+    enable_mem_efficient_sdp(False)
+    enable_math_sdp(False)
+    torch._dynamo.config.optimize_ddp = False
+    torch._dynamo.config.cache_size_limit = 64
+    h = Hyperparameters()
+    set_logging_hparams(h)
+    if h.is_main_process and h.logfile:
+        os.makedirs(os.path.dirname(h.logfile) or ".", exist_ok=True)
+    if args.mode == "train":
+        do_train(h, device)
+    else:
+        do_eval(h, device)
+    if distributed:
+        dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Please suggest a set of 4 distinct ablation experiments to evaluate specific
+components or simplifications of this solution. Good ablations target one component at a
+time (e.g., remove a regularization, swap an optimizer, drop a tokenizer trick, simplify
+the architecture). For each ablation, provide a short name, a description of what to
+remove/change in `main.py`, and the reasoning.
+Return the response as a JSON list of objects, each having keys: "name", "description", "reasoning".
+Example:
+[
+  {"name": "no_muon", "description": "Replace Muon optimizer with AdamW.", "reasoning": "Test impact of Muon."}
+]
+Return ONLY valid JSON.
+Use the `write_ablation_file` tool to save your response to `ablation_suggestions.txt`.
+
+2026-05-05 03:06:30,004 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL TOOL CALL] write_ablation_file({'content': '[\n  {\n    "name": "unweighted_svd_init",\n    "description": "Remove the `H_diag_sqrt` scaling of the error matrix `E` before the SVD and the `H_diag_inv_sqrt` unscaling of factor `B`. Compute the truncated SVD directly on the raw `E` matrix.",\n    "reasoning": "Directly tests the core hypothesis by comparing Hessian-weighted SVD initialization against the standard, unweighted SVD initialization baseline."\n  },\n  {\n    "name": "cholesky_weighted_svd_init",\n    "description": "Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian. Scale the error matrix as `E_prime = E @ L` before SVD, and unscale the right factor as `B = B_prime @ torch.linalg.inv(L)`.",\n    "reasoning": "Evaluates the stated risk factor regarding the diagonal approximation, testing whether incorporating off-diagonal Hessian dependencies in the initialization provides a significantly better starting point."\n  },\n  {\n    "name": "no_als_refinement",\n    "description": "Bypass the Alternating Least Squares (ALS) loop entirely after initialization, directly using the quantized weights and the SVD-initialized low-rank factors $A$ and $B$.",\n    "reasoning": "Measures how close the Hessian-weighted SVD initialization gets to the true optimum on its own, determining if the expensive ALS refinement step is still strictly necessary."\n  },\n  {\n    "name": "random_initialization",\n    "description": "Replace the truncated SVD step entirely with random normal initialization for the low-rank factors $A$ and $B$ before passing them into the ALS loop.",\n    "reasoning": "Establishes a worst-case baseline for initialization, revealing the overall importance of providing a structured, data-aware starting point for the ALS optimization."\n  }\n]', 'filename': 'ablation_suggestions.txt'})
+2026-05-05 03:06:30,006 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=53146 response_tokens=3136 total=56282
+2026-05-05 03:06:30,007 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL CALL] write_ablation_file | args: {'filename': 'ablation_suggestions.txt', 'content': '[\n  {\n    "name": "unweighted_svd_init",\n    "description": "Remove the `H_diag_sqrt` scaling of the error matrix `E` before the SVD and the `H_diag_inv_sqrt` unscaling of factor `B`. Compute the truncated SVD directly on the raw `E` matrix.",\n    "reasoning": "Directly tests the core hypothesis by comparing Hessian-weighted SVD initialization against the standard, unweighted SVD initialization baseline."\n  },\n  {\n    "name": "cholesky_weighted_svd_init",\n    "description": "Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian. Scale the error matrix as `E_prime = E @ L` before SVD, and unscale the right factor as `B = B_prime @ torch.linalg.inv(L)`.",\n    "reasoning": "Evaluates the stated risk factor regarding the diagonal approximation, testing whether incorporating off-diagonal Hessian dependencies in the initialization provides a significantly better starting point."\n  },\n  {\n    "name": "no_als_refinement",\n    "description": "Bypass the Alternating Least Squares (ALS) loop entirely after initialization, directly using the quantized weights and the SVD-initialized low-rank factors $A$ and $B$.",\n    "reasoning": "Measures how close the Hessian-weighted SVD initialization gets to the true optimum on its own, determining if the expensive ALS refinement step is still strictly necessary."\n  },\n  {\n    "name": "random_initialization",\n    "description": "Replace the truncated SVD step entirely with random normal initialization for the low-rank factors $A$ and $B$ before passing them into the ALS loop.",\n    "reasoning": "Establishes a worst-case baseline for initialization, revealing the overall importance of providing a structured, data-aware starting point for the ALS optimization."\n  }\n]'}
+2026-05-05 03:06:30,020 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [TOOL RESULT] write_ablation_file | result: Successfully wrote ablation_suggestions.txt
+2026-05-05 03:06:30,021 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL REQUEST #2] Sending request to model (step 2)...
+2026-05-05 03:06:30,021 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL PROMPT] [tool-return] Successfully wrote ablation_suggestions.txt
+2026-05-05 03:06:34,664 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL RESPONSE] [
+  {
+    "name": "unweighted_svd_init",
+    "description": "Remove the `H_diag_sqrt` scaling of the error matrix `E` before the SVD and the `H_diag_inv_sqrt` unscaling of factor `B`. Compute the truncated SVD directly on the raw `E` matrix.",
+    "reasoning": "Directly tests the core hypothesis by comparing Hessian-weighted SVD initialization against the standard, unweighted SVD initialization baseline."
+  },
+  {
+    "name": "cholesky_weighted_svd_init",
+    "description": "Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian. Scale the error matrix as `E_prime = E @ L` before SVD, and unscale the right factor as `B = B_prime @ torch.linalg.inv(L)`.",
+    "reasoning": "Evaluates the stated risk factor regarding the diagonal approximation, testing whether incorporating off-diagonal Hessian dependencies in the initialization provides a significantly better starting point."
+  },
+  {
+    "name": "no_als_refinement",
+    "description": "Bypass the Alternating Least Squares (ALS) loop entirely after initialization, directly using the quantized weights and the SVD-initialized low-rank factors A and B.",
+    "reasoning": "Measures how close the Hessian-weighted SVD initialization gets to the true optimum on its own, determining if the expensive ALS refinement step is still strictly necessary."
+  },
+  {
+    "name": "random_initialization",
+    "description": "Replace the truncated SVD step entirely with random normal initialization for the low-rank factors A and B before passing them into the ALS loop.",
+    "reasoning": "Establishes a worst-case baseline for initialization, revealing the overall importance of providing a structured, data-aware starting point for the ALS optimization."
+  }
+]
+2026-05-05 03:06:34,664 - one_ais.agents.solver.deep_agent.utils.logging - INFO - [MODEL USAGE] request_tokens=53695 response_tokens=431 total=54126

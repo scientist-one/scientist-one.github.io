@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6699180294932761\nBest threshold: 0.29999999999999993",
+  "exec_time": 2165.0,
+  "analysis": "Tested the standard MLP architecture with widened layers (3072->4096->2048), reduced dropout (0.1, 0.05), and 150 epochs using the focal loss.\nResult: 0.6699.\nConclusion: The widened MLP with lower dropout underperforms the standard bottleneck MLP. It likely overfits or fails to properly regularize the feature space.",
+  "val_metric": 0.6699180294932761
+}

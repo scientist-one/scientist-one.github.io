@@ -1,0 +1,1 @@
+Used MultilabelStratifiedShuffleSplit from iterative-stratification to stratify the 80:20 split over all classes. Random state is fixed to 42.

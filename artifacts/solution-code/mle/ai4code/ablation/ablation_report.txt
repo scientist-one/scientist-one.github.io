@@ -1,0 +1,19 @@
+========================================
+ABLATION EXPERIMENTS
+========================================
+
+Ablation: remove_margin_ranking_loss
+Description: Remove the MarginRankingLoss component from the training loop, updating the total loss to `loss = loss_ce` instead of `loss = loss_ce + 0.5 * loss_margin`.
+Metrics: {'competition_id': 'AI4Code', 'score': 0.83633, 'gold_threshold': 0.9006, 'silver_threshold': 0.8598, 'bronze_threshold': 0.8534, 'median_threshold': 0.8257, 'any_medal': False, 'gold_medal': False, 'silver_medal': False, 'bronze_medal': False, 'above_median': True, 'submission_exists': True, 'valid_submission': True, 'is_lower_better': False, 'created_at': '2026-05-02T13:29:24.454044', 'submission_path': '/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/1_remove_margin_ranking_loss/submission.csv', 'success': True}
+
+Ablation: argmax_inference
+Description: Replace the continuous position expectation `exp_pos = (probs * positions).sum(dim=1)` with a hard discrete assignment using `exp_pos = probs.argmax(dim=1).cpu().numpy()` during validation and testing.
+Metrics: {'competition_id': 'AI4Code', 'score': 0.83745, 'gold_threshold': 0.9006, 'silver_threshold': 0.8598, 'bronze_threshold': 0.8534, 'median_threshold': 0.8257, 'any_medal': False, 'gold_medal': False, 'silver_medal': False, 'bronze_medal': False, 'above_median': True, 'submission_exists': True, 'valid_submission': True, 'is_lower_better': False, 'created_at': '2026-05-02T12:39:03.236205', 'submission_path': '/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/2_argmax_inference/submission.csv', 'success': True}
+
+Ablation: single_context_boundary
+Description: Modify the `get_boundaries` function to only include the preceding code cell context, setting `bnd_text = f"Previous: {prev_code}"` instead of concatenating both Previous and Next code cells.
+Metrics: {'competition_id': 'AI4Code', 'score': 0.79196, 'gold_threshold': 0.9006, 'silver_threshold': 0.8598, 'bronze_threshold': 0.8534, 'median_threshold': 0.8257, 'any_medal': False, 'gold_medal': False, 'silver_medal': False, 'bronze_medal': False, 'above_median': False, 'submission_exists': True, 'valid_submission': True, 'is_lower_better': False, 'created_at': '2026-05-02T12:24:45.990424', 'submission_path': '/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/3_single_context_boundary/submission.csv', 'success': True}
+
+Ablation: generic_lm_backbone
+Description: Change the default model in `DualEncoder` and the training initialization from `microsoft/codebert-base` to `roberta-base`.
+Metrics: {'competition_id': 'AI4Code', 'score': 0.83656, 'gold_threshold': 0.9006, 'silver_threshold': 0.8598, 'bronze_threshold': 0.8534, 'median_threshold': 0.8257, 'any_medal': False, 'gold_medal': False, 'silver_medal': False, 'bronze_medal': False, 'above_median': True, 'submission_exists': True, 'valid_submission': True, 'is_lower_better': False, 'created_at': '2026-05-02T12:42:58.621095', 'submission_path': '/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/final.05_mle_ablation_agent/workspace/ablations/4_generic_lm_backbone/submission.csv', 'success': True}

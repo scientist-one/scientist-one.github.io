@@ -1,0 +1,6 @@
+{
+  "term_out": "Extracting features for train...\nExtracting features for val...\nFound 735 hierarchical pairs with P(A|B) > 0.95\nTraining Model 1/10\nTraining Model 2/10\nTraining Model 3/10\nTraining Model 4/10\nTraining Model 5/10\nTraining Model 6/10\nTraining Model 7/10\nTraining Model 8/10\nTraining Model 9/10\nTraining Model 10/10\nVAL_METRIC: 0.6661240837747656\nBest threshold: 0.5499999999999998\nExtracting features for test...",
+  "exec_time": 2282.0,
+  "analysis": "Implemented ASL base criterion with gamma_neg=4, gamma_pos=1, clip=0.05.\nIncluded empirical conditional hierarchical probability pairs with threshold 0.95.\nAdded L2 penalty max(0, p_B - p_A)^2 with lambda_hier=0.1.\nLearning rate was adjusted to 2e-4 since loss reduction was changed to 'sum'.\nResult: VAL_METRIC = 0.6661. This is lower than the previous iteration's focal loss baseline (0.6738).\nHypothesis: The hierarchical penalty (lambda=0.1) might be over-regularizing, or the learning rate/ASL hyperparameters need more tuning compared to the robust Normalized Symmetric Focal Loss. We are concurrently testing an ablation without the hierarchical penalty.",
+  "val_metric": 0.6661240837747656
+}

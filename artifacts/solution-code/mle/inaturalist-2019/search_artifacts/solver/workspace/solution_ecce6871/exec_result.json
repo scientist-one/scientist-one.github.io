@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.8265, Val Acc: 0.5755\nEpoch 2 - Train Loss: 2.7193, Val Acc: 0.6474\nEpoch 3 - Train Loss: 2.3011, Val Acc: 0.6905\nEpoch 4 - Train Loss: 1.9467, Val Acc: 0.7244\nEpoch 5 - Train Loss: 1.6510, Val Acc: 0.7423\nEpoch 6 - Train Loss: 1.4544, Val Acc: 0.7526\nEpoch 7 - Train Loss: 1.3735, Val Acc: 0.7530\nVAL_METRIC: 0.2470",
+  "exec_time": 2224.0,
+  "analysis": "Implemented the taxonomic-enhanced multi-layer prototype fusion. Computed visual similarity V and taxonomic similarity T, combined them (alpha=0.5), and applied as pairwise margin (beta=1.0) in cross-entropy loss. Achieved 75.30% val accuracy, a clear improvement over the 74.49% baseline.",
+  "val_metric": 0.247
+}

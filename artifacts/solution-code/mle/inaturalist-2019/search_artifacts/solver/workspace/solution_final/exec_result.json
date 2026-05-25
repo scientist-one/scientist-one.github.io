@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.8687, Val Acc: 0.5886\nEpoch 2 - Train Loss: 2.7624, Val Acc: 0.6574\nEpoch 3 - Train Loss: 2.3325, Val Acc: 0.6976\nEpoch 4 - Train Loss: 1.9683, Val Acc: 0.7281\nEpoch 5 - Train Loss: 1.6646, Val Acc: 0.7470\nEpoch 6 - Train Loss: 1.4654, Val Acc: 0.7570\nEpoch 7 - Train Loss: 1.3787, Val Acc: 0.7577\nVAL_METRIC: 0.2423",
+  "exec_time": 2181.0,
+  "analysis": "Ablation with unnormalized `V` (margin directly set to raw cosine similarity, roughly 0.81 to 1.0) on GPU 7. Result is 75.77% validation accuracy! This is a NEW BEST (+0.12% over 75.65%). It reveals that applying a high, nearly constant baseline margin (0.81) to all classes, with a slight peak (up to 1.0) for visual neighbors, provides an excellent balance of generic margin and targeted fine-grained margin. This mimics the benefits of standard CosFace-like margins for all classes while retaining the structural benefits of targeted logit adjustment.",
+  "val_metric": 0.2423
+}

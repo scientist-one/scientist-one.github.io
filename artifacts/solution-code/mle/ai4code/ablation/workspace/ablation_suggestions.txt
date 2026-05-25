@@ -1,0 +1,22 @@
+[
+  {
+    "name": "remove_margin_ranking_loss",
+    "description": "Remove the MarginRankingLoss component from the training loop, updating the total loss to `loss = loss_ce` instead of `loss = loss_ce + 0.5 * loss_margin`.",
+    "reasoning": "Evaluates whether explicitly penalizing the distance between the positive boundary and a shifted negative boundary provides additional ranking stability over the standard symmetric Cross-Entropy contrastive loss."
+  },
+  {
+    "name": "argmax_inference",
+    "description": "Replace the continuous position expectation `exp_pos = (probs * positions).sum(dim=1)` with a hard discrete assignment using `exp_pos = probs.argmax(dim=1).cpu().numpy()` during validation and testing.",
+    "reasoning": "Tests if soft, expected position ranking (which acts as a smoothing mechanism to resolve ties) is crucial for maximizing the Kendall tau metric compared to strict, hard assignment to the most probable boundary."
+  },
+  {
+    "name": "single_context_boundary",
+    "description": "Modify the `get_boundaries` function to only include the preceding code cell context, setting `bnd_text = f\"Previous: {prev_code}\"` instead of concatenating both Previous and Next code cells.",
+    "reasoning": "Assesses the importance of bidirectional execution context for creating effective structural anchors, testing if the prior code state alone is sufficient for aligning the markdown."
+  },
+  {
+    "name": "generic_lm_backbone",
+    "description": "Change the default model in `DualEncoder` and the training initialization from `microsoft/codebert-base` to `roberta-base`.",
+    "reasoning": "Determines how much the generate-then-match framework relies on domain-specific code pretraining versus general natural language semantic representations to correctly embed the synthetic scaffolding."
+  }
+]

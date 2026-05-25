@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6740313532734435\nBest threshold: 0.32999999999999985",
+  "exec_time": 2215.0,
+  "analysis": "Tested the state-of-the-art previous focal loss but extended training epochs from 120 to 150 to allow the cosine annealing scheduler a longer tail.\nResult: 0.67403, surpassing the previous record of 0.6738.\nConclusion: The standard, bottlenecked MLP [3072 -> 2048 -> 1024 -> 3474] trained with a Normalized Symmetric Focal loss and extended epochs is the best architecture. The hierarchical ASL penalty from the hypothesis degrades performance.",
+  "val_metric": 0.674031353273443
+}

@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.7668, Val Acc: 0.5786\nEpoch 2 - Train Loss: 2.7107, Val Acc: 0.6534\nEpoch 3 - Train Loss: 2.2876, Val Acc: 0.6965\nEpoch 4 - Train Loss: 1.9325, Val Acc: 0.7292\nEpoch 5 - Train Loss: 1.6352, Val Acc: 0.7451\nEpoch 6 - Train Loss: 1.4404, Val Acc: 0.7559\nEpoch 7 - Train Loss: 1.3594, Val Acc: 0.7565\nVAL_METRIC: 0.2435",
+  "exec_time": 2334.0,
+  "analysis": "Ablation with alpha=1.0 (purely visual prototypes) and beta=1.0. This completely drops the taxonomic data. Surprisingly, this yields 75.65% validation accuracy, which is the highest yet (+1.16% absolute improvement over baseline, and +0.35% over the fusion approach). This indicates that the pre-trained features (even with potential background correlations) provide a strictly superior similarity prior for the margin loss than the dataset's taxonomic metadata.",
+  "val_metric": 0.2435
+}

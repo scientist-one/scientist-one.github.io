@@ -1,0 +1,22 @@
+[
+  {
+    "name": "no_synthetic_pretraining",
+    "description": "Skip the 'ONE-TIME MASSIVE PRE-TRAINING' block. Instantiate Simple3DCNN directly in the fold loop without loading pretrain_model.state_dict().",
+    "reasoning": "Evaluates the core hypothesis: does pre-training on explicit synthetic geometric shapes actually improve downstream classification compared to training from scratch?"
+  },
+  {
+    "name": "no_synthetic_texture_noise",
+    "description": "In SyntheticDataset.__getitem__, remove the injection of Gaussian noise and background values, feeding purely clean/binary-like geometric masks to the pre-training phase.",
+    "reasoning": "Tests whether simulating MRI-like textural noise is necessary to bridge the domain gap between synthetic shapes and real MRI scans."
+  },
+  {
+    "name": "no_modality_dropout",
+    "description": "In BraTSDataset.__getitem__, remove the 'Channel Randomization' block where a random modality (channel) is explicitly dropped to 0.0.",
+    "reasoning": "Evaluates the impact of the modality dropout augmentation and whether forcing the model to rely on subsets of MRI sequences improves generalization."
+  },
+  {
+    "name": "no_best_seed_selection",
+    "description": "Change num_ensembles = 10 to num_ensembles = 1, removing the multi-seed search that selects the single highest Val AUC run for the final submission.",
+    "reasoning": "Isolates the baseline performance of the architecture from the upward statistical bias of running multiple random seeds and explicitly picking the best one."
+  }
+]

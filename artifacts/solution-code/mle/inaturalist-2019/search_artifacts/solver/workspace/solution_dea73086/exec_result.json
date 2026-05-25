@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 4.2688, Val Acc: 0.5794\nEpoch 2 - Train Loss: 3.0990, Val Acc: 0.6503\nEpoch 3 - Train Loss: 2.6067, Val Acc: 0.6924\nEpoch 4 - Train Loss: 2.1785, Val Acc: 0.7237\nEpoch 5 - Train Loss: 1.8164, Val Acc: 0.7430\nEpoch 6 - Train Loss: 1.5676, Val Acc: 0.7510\nEpoch 7 - Train Loss: 1.4631, Val Acc: 0.7519\nVAL_METRIC: 0.2481",
+  "exec_time": 2163.0,
+  "analysis": "Ablation with S = V_norm ** 2 and beta = 2.0. Result is 75.19%. This is lower than the pure visual baseline of 75.65% (which used S = V_norm and beta = 1.0). So artificially sharpening the margin via squaring and increasing beta actually hurts. It may be that the long-tailed nature of the dataset benefits from broad, soft repulsion against moderately similar classes rather than a strict focus only on the top-1 confusions.",
+  "val_metric": 0.2481
+}

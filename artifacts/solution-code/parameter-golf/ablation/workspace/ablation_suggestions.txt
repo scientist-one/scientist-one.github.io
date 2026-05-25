@@ -1,0 +1,22 @@
+[
+  {
+    "name": "unweighted_svd_init",
+    "description": "Remove the `H_diag_sqrt` scaling of the error matrix `E` before the SVD and the `H_diag_inv_sqrt` unscaling of factor `B`. Compute the truncated SVD directly on the raw `E` matrix.",
+    "reasoning": "Directly tests the core hypothesis by comparing Hessian-weighted SVD initialization against the standard, unweighted SVD initialization baseline."
+  },
+  {
+    "name": "cholesky_weighted_svd_init",
+    "description": "Replace the diagonal approximation `H_diag_sqrt` with the full Cholesky factor `L` of the Hessian. Scale the error matrix as `E_prime = E @ L` before SVD, and unscale the right factor as `B = B_prime @ torch.linalg.inv(L)`.",
+    "reasoning": "Evaluates the stated risk factor regarding the diagonal approximation, testing whether incorporating off-diagonal Hessian dependencies in the initialization provides a significantly better starting point."
+  },
+  {
+    "name": "no_als_refinement",
+    "description": "Bypass the Alternating Least Squares (ALS) loop entirely after initialization, directly using the quantized weights and the SVD-initialized low-rank factors $A$ and $B$.",
+    "reasoning": "Measures how close the Hessian-weighted SVD initialization gets to the true optimum on its own, determining if the expensive ALS refinement step is still strictly necessary."
+  },
+  {
+    "name": "random_initialization",
+    "description": "Replace the truncated SVD step entirely with random normal initialization for the low-rank factors $A$ and $B$ before passing them into the ALS loop.",
+    "reasoning": "Establishes a worst-case baseline for initialization, revealing the overall importance of providing a structured, data-aware starting point for the ALS optimization."
+  }
+]

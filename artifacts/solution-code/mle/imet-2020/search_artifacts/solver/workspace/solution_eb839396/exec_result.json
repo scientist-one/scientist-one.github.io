@@ -1,0 +1,6 @@
+{
+  "term_out": "VAL_METRIC: 0.6788304300583271\nBest threshold: 0.3999999999999998",
+  "exec_time": 2026.0,
+  "analysis": "Tested Normalized Asymmetric Loss (gamma_neg=2.0, gamma_pos=1.0) on 448x448 features.\nResult: 0.67883.\nConclusion: Combines the superior dense spatial patches from 448x448 DINOv2 extraction with the optimal Normalized Asymmetric Loss strategy discovered in earlier ablation. This yields a new record absolute validation score. The hypothesis continues to hold robustly across resolutions.",
+  "val_metric": 0.678830430058327
+}

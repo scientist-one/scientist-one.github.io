@@ -1,0 +1,22 @@
+[
+  {
+    "name": "no_logit_adjustment",
+    "description": "Remove the addition of `margins` to `logits` before computing the cross-entropy loss, using standard logits instead.",
+    "reasoning": "Evaluates the core contribution of the zero-cost visual similarity-based logit adjustment compared to a vanilla baseline."
+  },
+  {
+    "name": "single_layer_prototypes",
+    "description": "Modify `compute_visual_prototypes` to only compute and use similarities from the final ConvNeXt stage instead of averaging all 4 stages.",
+    "reasoning": "Tests whether multi-stage prototype fusion is actually necessary or if final-layer semantic features alone provide a sufficient difficulty matrix."
+  },
+  {
+    "name": "no_label_smoothing",
+    "description": "Remove the `label_smoothing=0.1` parameter from the `F.cross_entropy` loss function.",
+    "reasoning": "Checks if the pairwise similarity margins already act as a sufficient regularizer, rendering standard label smoothing redundant."
+  },
+  {
+    "name": "no_data_augmentation",
+    "description": "Replace `RandomResizedCrop` and `RandomHorizontalFlip` in `train_transform` with `Resize(256)` and `CenterCrop(224)`.",
+    "reasoning": "Assesses the reliance of the logit-adjusted model on diverse augmented views for effectively learning fine-grained classification boundaries."
+  }
+]

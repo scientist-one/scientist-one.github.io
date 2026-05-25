@@ -1,0 +1,20 @@
+```yaml
+idea:
+  Name: hessian_weighted_svd_als
+  Title: Hessian-Weighted SVD Initialization for Alternating Least Squares Quantization
+  Short Hypothesis: Initializing the low-rank factors in ALS using a Hessian-weighted Singular Value Decomposition aligns the starting point with the true loss landscape, leading to a superior joint optimum and lower quantization error.
+  Abstract: The previous Hessian-Weighted Alternating Least Squares (ALS) method successfully minimized quantization error by iteratively updating continuous low-rank projections and discrete weights. However, its initialization relies on standard SVD, which optimizes unweighted mean squared error—creating a mismatch with the true Hessian-weighted objective. We propose scaling the initial quantization error matrix by the square root of the Hessian diagonal prior to SVD. Unscaling the resulting factors provides an optimal rank-K initialization for the exact weighted objective, accelerating ALS convergence and yielding a better final assignment of orthogonal indicator bits.
+  Experiments:
+    - hypothesis: Hessian-weighted SVD initialization will lower the initial and final weighted quantization error, outperforming unweighted SVD initialization.
+      experiment_plan_steps:
+        - Extract the diagonal of the Hessian matrix, $H_{diag}$, used during the calibration phase for the target layer (e.g., `mlp.fc` or `tok_emb`).
+        - Add a small epsilon $\epsilon$ to $H_{diag}$ to ensure strict positivity and numerical stability.
+        - Before the first ALS iteration, scale the initial error matrix $E = (W - W_q)$ by $H_{diag}^{1/2}$ to form $E' = E \cdot H_{diag}^{1/2}$.
+        - Perform truncated SVD on $E'$ to obtain the optimal factors $L$ and $R'$.
+        - Reverse the scaling to get the initial right factor: $R = R' \cdot H_{diag}^{-1/2}$.
+        - Proceed with the existing Hessian-weighted Alternating Least Squares loop.
+  Risk Factors and Limitations:
+    - The diagonal approximation of the Hessian ignores off-diagonal dependencies. While usually sufficient for scaling, it is a simplification of the full inverse-Hessian used in exact GPTQ updates.
+    - Dividing by $H_{diag}^{1/2}$ could introduce numerical instabilities if some features have near-zero Hessian values; $\epsilon$-smoothing requires careful tuning.
+    - If the original ALS process was already reaching the global optimum regardless of initialization, the overall BPB improvement may be marginal, though it could still reliably reduce the required number of ALS iterations.
+```

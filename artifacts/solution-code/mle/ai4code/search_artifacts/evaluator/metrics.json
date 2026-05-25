@@ -1,0 +1,19 @@
+{
+  "competition_id": "AI4Code",
+  "score": 0.83564,
+  "gold_threshold": 0.9006,
+  "silver_threshold": 0.8598,
+  "bronze_threshold": 0.8534,
+  "median_threshold": 0.8257,
+  "any_medal": false,
+  "gold_medal": false,
+  "silver_medal": false,
+  "bronze_medal": false,
+  "above_median": true,
+  "submission_exists": true,
+  "valid_submission": true,
+  "is_lower_better": false,
+  "created_at": "2026-05-01T23:37:11.340414",
+  "submission_path": "/rmeng_data/jiefengc-data/one-ai-scientist/mle-bench/results/2026-05-01_12-58-30_mle_bench.AI4Code_parallel_explore_exploit/trajectory/i02.b0.02_mle_deep_agent/workspace/solution_final/submission.csv",
+  "success": true
+}

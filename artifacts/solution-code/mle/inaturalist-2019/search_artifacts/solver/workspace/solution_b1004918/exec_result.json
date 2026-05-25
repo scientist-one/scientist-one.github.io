@@ -1,0 +1,6 @@
+{
+  "term_out": "Epoch 1 - Train Loss: 3.6884, Val Acc: 0.5903\nEpoch 2 - Train Loss: 2.6596, Val Acc: 0.6573\nEpoch 3 - Train Loss: 2.2508, Val Acc: 0.6967\nEpoch 4 - Train Loss: 1.9036, Val Acc: 0.7282\nEpoch 5 - Train Loss: 1.6117, Val Acc: 0.7453\nEpoch 6 - Train Loss: 1.4239, Val Acc: 0.7547\nEpoch 7 - Train Loss: 1.3429, Val Acc: 0.7556\nVAL_METRIC: 0.2444",
+  "exec_time": 2150.0,
+  "analysis": "Ablation with S = V_norm ** 2 and beta = 1.0 (Sharpened Visual Similarity Margin). Result is 75.56%. This is extremely close to the pure linear visual margin (75.65%). It confirms that sharpening the margin to focus purely on the top confusing classes retains nearly all the performance benefits, but it does not strictly improve over the simple V_norm (which spreads margin gradients more uniformly). The linear `S = V_norm` remains the best simplest model.",
+  "val_metric": 0.2444
+}

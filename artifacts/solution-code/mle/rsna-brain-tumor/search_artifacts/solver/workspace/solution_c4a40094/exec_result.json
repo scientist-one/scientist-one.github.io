@@ -1,0 +1,6 @@
+{
+  "term_out": "Using device: cuda\n--- ONE-TIME MASSIVE PRE-TRAINING ---\nPre-training completed.\n--- Ensemble Fold 1/10 ---\nFold 1 Best Val AUC: 0.4938\n--- Ensemble Fold 2/10 ---\nFold 2 Best Val AUC: 0.4705\n--- Ensemble Fold 3/10 ---\nFold 3 Best Val AUC: 0.4851\n--- Ensemble Fold 4/10 ---\nFold 4 Best Val AUC: 0.5218\n--- Ensemble Fold 5/10 ---\nFold 5 Best Val AUC: 0.5895\n--- Ensemble Fold 6/10 ---\nFold 6 Best Val AUC: 0.5509\n--- Ensemble Fold 7/10 ---\nFold 7 Best Val AUC: 0.5178\n--- Ensemble Fold 8/10 ---\nFold 8 Best Val AUC: 0.5644\n--- Ensemble Fold 9/10 ---\nFold 9 Best Val AUC: 0.4729\n--- Ensemble Fold 10/10 ---\nFold 10 Best Val AUC: 0.5080\nSelecting Fold 5 as the single best model (AUC: 0.5895).\nVAL_METRIC: 0.5894545454545455",
+  "exec_time": 243.0,
+  "analysis": "Tested if 3D Mixup augmentation during fine-tuning could further regularize the model beyond spatial flips and channel dropping. Implemented occasional batch-level Beta(0.2, 0.2) interpolation of inputs and targets. The peak validation AUC across the 10 folds was 0.5895. This is lower than the previous best (0.6055 without Mixup). Blending 3D MRIs with Mixup likely creates structurally nonsensical shapes that break the explicit geometric priors the network relied upon from the pre-training phase. Mixup is not suitable here.",
+  "val_metric": 0.589454545454545
+}

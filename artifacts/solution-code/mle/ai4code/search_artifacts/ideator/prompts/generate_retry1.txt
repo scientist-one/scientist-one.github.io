@@ -1,0 +1,255 @@
+You are a creative research scientist with broad cross-disciplinary reading.
+Generate **10** unconventional research ideas for the task below.
+Unconventional here means: cross-paradigm transfer, reframing the problem,
+or attacking an assumption the brief treats as fixed. The idea must still be
+runnable on the available baselines and address a real gap from the brief.
+
+# Problem
+# Overview
+
+## Description
+
+The goal of this competition is to understand the relationship between code and comments in Python notebooks. You are challenged to reconstruct the order of markdown cells in a given notebook based on the order of the code cells, demonstrating comprehension of which natural language references which code.
+
+### Context
+
+Research teams across Google and Alphabet are exploring new ways that machine learning can assist software developers, and want to rally more members of the developer community to help explore this area too. Python notebooks provide a unique learning opportunity, because unlike a lot of standard source code, notebooks often follow narrative format, with comment cells implemented in markdown that explain a programmer's intentions for corresponding code cells. An understanding of the relationships between code and markdown could lend to fresh improvements across many aspects of AI-assisted development, such as the construction of better data filtering and preprocessing pipelines for model training, or automatic assessments of a notebook's readability.
+
+We have assembled a dataset of approximately 160,000 public Python notebooks from Kaggle and have teamed up with [X, the moonshot factory](https://x.company/) to design a competition that challenges participants to use this dataset of published notebooks to build creative techniques aimed at better understanding the relationship between comment cells and code cells.
+
+![Image of Notebook Cells](https://storage.googleapis.com/kaggle-media/Images/notebook_cell_examples.png)
+
+After the submission deadline, Kaggle and X will evaluate the performance of submitted techniques on new, previously unseen notebooks. We're excited to see how the insights learned from this competition affect the future of notebook authorship.
+
+## Evaluation
+
+Predictions are evaluated by the [Kendall tau correlation](https://en.wikipedia.org/wiki/Kendall_rank_correlation_coefficient) between predicted cell orders and ground truth cell orders accumulated across the entire collection of test set notebooks.
+
+Let $S$ be the number of swaps of adjacent entries needed to sort the predicted cell order into the ground truth cell order. In the worst case, a predicted order for a notebook with $n$ cells will need $\frac{1}{2} n(n-1)$ swaps to sort.
+
+We sum the number of swaps from your predicted cell order across the entire collection of test set notebooks, and similarly with the worst-case number of swaps. We then compute the Kendall tau correlation as:
+
+$K=1-4 \frac{\sum_i S_i}{\sum_i n_i\left(n_i-1\right)}$
+
+You may find a Python implementation in this notebook: [Competition Metric - Kendall Tau Correlation](https://www.kaggle.com/ryanholbrook/competition-metric-kendall-tau-correlation).
+
+## Submission File
+
+For each `id` in the test set (representing a notebook), you must predict `cell_order`, the correct ordering of its cells in terms of the cell ids. The file should contain a header and have the following format:
+
+```
+id,cell_order
+0009d135ece78d,ddfd239c c6cd22db 1372ae9b ...
+0010483c12ba9b,54c7cab3 fe66203e 7844d5f8 ...
+0010a919d60e4f,aafc3d23 80e077ec b190ebb4 ...
+0028856e09c5b7,012c9d02 d22526d1 3ae7ece3 ...
+etc.
+```
+
+## Timeline
+
+**This is a two-stage competition, with a training stage and a collection stage, during which models will be rerun against notebooks which are yet to be authored.**
+
+### Training Timeline
+
+- May 11, 2022 - Start Date
+- August 4, 2022 - Entry deadline. You must accept the competition rules before this date in order to compete.
+- August 4, 2022 - Team Merger deadline. This is the last day participants may join or merge teams.
+- August 11, 2022 - Final submission deadline.
+
+All deadlines are at 11:59 PM UTC on the corresponding day unless otherwise noted. The competition organizers reserve the right to update the contest timeline if they deem it necessary.
+
+### Collection Timeline:
+
+Starting after the final submission deadline, there will be periodic updates to the leaderboard to reflect models' performance against newly authored notebooks on Kaggle.
+
+- November 10, 2022 - Competition End Date - Winner's announcement
+
+## Prizes
+
+- 1st Place - $50,000
+- 2nd Place - $40,000
+- 3rd Place - $30,000
+- 4th Place - $20,000
+- 5th Place - $10,000
+
+## Code Requirements
+
+### This is a Code Competition
+
+Submissions to this competition must be made through Notebooks. In order for the "Submit" button to be active after a commit, the following conditions must be met:
+
+- CPU Notebook <= 9 hours run-time
+- GPU Notebook <= 9 hours run-time
+- Internet access disabled
+- Freely & publicly available external data is allowed, including pre-trained models
+- Submission file must be named `submission.csv`
+
+Please see the [Code Competition FAQ](https://www.kaggle.com/docs/competitions#notebooks-only-FAQ) for more information on how to submit. And review the [code debugging doc](https://www.kaggle.com/code-competition-debugging) if you are encountering submission errors.
+
+## Citation
+
+Addison Howard, Alex Polozov, Bin Ni, Christopher Tirrell, MicHCR, Michele (pirroh) Catasta, Olivia Hatalsky, Rishabh Singh, Ryan Holbrook, Will Cukierski. (2022). Google AI4Code -- Understand Code in Python Notebooks. Kaggle. https://kaggle.com/competitions/AI4Code
+
+
+# Dataset Description
+
+The dataset for this competition comprises about 160,000 Jupyter notebooks published by the Kaggle community. Jupyter notebooks are the tool of choice for many data scientists for their ability to tell a narrative with both code and natural language. These two types of discourse are contained within **cells** of the notebook, and we refer to these cells as either **code** cells or **markdown** cells ([markdown](https://en.wikipedia.org/wiki/Markdown) being the text formatting language used by Jupyter).
+
+Your task is to predict the correct ordering of the cells in a given notebook whose markdown cells have been shuffled.
+
+The notebooks in this dataset have been selected and processed to ensure their suitability for the competition task. All notebooks:
+
+- Have been published publicly on Kaggle under the [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0) open source license.
+- Represent the most recently published version of the notebook.
+- Contain at least one code cell and at least one markdown cell.
+- Have code written in the Python language.
+- Have had empty cells removed.
+
+This is a code competition, in which you will submit a model or code that will be run against a future test set:
+
+- The first-stage test set contains notebooks from an approximately 90-day historical window of time.
+- The second-stage test set will contain a similar number of notebooks, collected from a future 90-day window of time. This is necessary to prevent models from looking up the order of existing public notebooks. The selection criteria for second-stage notebooks will be monitored for competition fairness purposes. For example, it will exclude competition participants' own notebooks.
+
+## Training Data
+
+- **train/** - A folder comprising about 140,000 JSON files with the filenames corresponding to the `id` field in the `csv` files. Each file contains the code and markdown cells of a Kaggle notebook. **The code cells are in their original (correct) order. The markdown cells have been shuffled** and placed after the code cells.
+- **train_orders.csv** - Gives the correct order of the cells for each notebook in the `train/` folder.
+    - `id` - The notebook in file `{id}.json`.
+    - `cell_order` - A space delimited list of the correct cell ordering given in terms of the order in `{id}.json`.
+- **train_ancestors.csv** - On Kaggle, a user may "fork" (that is, copy) the notebook of another user to create their own version. This file contains the forking history of notebooks in the training set. **Note: There is no corresponding file for the test set.**
+    - `ancestor_id` - Identifies sets of notebooks that have a common origin or "ancestor". As no notebook in the test set has an ancestor in the training set, you may find this field to be of use as a grouping factor when constructing validation splits.
+    - `parent_id` - Indicates that some version of the notebook `id` was forked from some version of the notebook `parent_id`. The notebook `parent_id` may or may not be present in the training data. (The parent may be missing because someone had forked a private notebook of their own, for instance.)
+
+## Example Test Data
+
+To help you author submission code, we include a few example instances selected from the test set. When you submit your notebook for scoring, this example data will be replaced by the actual test data, including the `sample_submission.csv` file.
+
+- **test/** - A few example notebooks from the test set. The actual test set comprises about 20,000 notebooks in a format similar to the training set notebooks. No notebook in the test set has an ancestor in the training set.
+- **sample_submission.csv** - A sample submission file in the correct format. See the [**Evaluation**](https://www.kaggle.com/competitions/AI4Code/overview/evaluation) page for more details.
+
+
+# Domain Knowledge
+
+## SOTA methods (what convention assumes)
+| Category | Representative Methods | Best Known Result | Limitation for Our Task |
+|---|---|---|---|
+| Multi-Modal Context Fusion | DataCoder (Dual-encoder) | Kendall tau: UNKNOWN — verify before proceeding (Proxy: EM 21.3%), Source: `[2024][ASE][CoCoNote]Contextualized_Data_Wrangling_Code_Generation_in_C.md` | Focuses on data-wrangling code generation, not structural ranking of cells. |
+| Metric-Augmented Sequence Modeling | CNN-RNN with Code Metrics | Kendall tau: UNKNOWN — verify before proceeding (Proxy: ROUGE-L 0.35), Source: `[2026][arXiv][METRICDOC]Integrating_Code_Metrics_into_Automated_Documentat.md` | Evaluates documentation generation; lacks listwise ranking for cell ordering. |
+| Agentic Execution-Aware Frameworks | MLEModernizer (Execute-feedback-fix) | Kendall tau: UNKNOWN — verify before proceeding (Proxy: 74.2% Reproducibility), Source: `[2026][arXiv.org][MLEModernizer]Automated_Modernization_of_Machine_Learning_Engine.md` | Focuses on code repair and reproducibility, not predicting markdown narrative flow. |
+| Hierarchical Sequence Modeling | CodeT5-RNN | Kendall tau: UNKNOWN — verify before proceeding (Proxy: Accuracy 67.90%), Source: `[2026][arXiv][CodeT5-RNN]CodeT5_RNN__Reinforcing_Contextual_Embeddings_for_.md` | Focuses on defect detection rather than structural ordering of markdown cells. |
+
+## Open problems and opportunity areas
+Areas where the literature suggests room for improvement. These are GAPS, not specific hypotheses — the Ideator generates hypotheses from these areas.
+
+- **Vulnerability to Transitive Inconsistencies**: Current baselines in code-language alignment rely heavily on pairwise classification (e.g., predicting if cell A precedes cell B) or generative sequence-to-sequence modeling. These approaches suffer from transitive inconsistencies (e.g., predicting A > B, B > C, but C > A) that heavily penalize the Kendall tau score. The literature lacks approaches that directly optimize for global sequence consistency and structural document recovery, leaving a significant gap for listwise ranking methodologies that can evaluate the entire notebook structure simultaneously.
+- **Lack of Execution-State Context**: Notebooks are inherently stateful, yet existing models often treat them as flat text sequences. While some frameworks parse code into ASTs, the literature lacks mechanisms to capture the underlying data flow and execution dependencies between code cells, which dictate the logical placement of markdown narratives. This gap prevents models from understanding the true structural context of the notebook, as markdown cells often describe the transitions between specific execution states rather than just the static code syntax.
+- **Context Truncation in Long Notebooks**: Standard sequence models truncate long notebooks due to token limits (e.g., 512 or 1024 tokens), losing the global narrative context. There is a significant gap in effectively pooling and retaining the entire notebook's structural flow without exceeding memory constraints, which is critical for ranking markdown cells that reference distant code blocks. Current pooling methods fail to adaptively weigh the importance of different notebook sections, leading to suboptimal ranking performance on longer, more complex notebooks.
+
+| Opportunity | Supporting Evidence (papers) | Why Unexplored | Estimated Difficulty |
+|---|---|---|---|
+| Vulnerability to Transitive Inconsistencies | `[2024][arXiv][ICR]Instructive_Code_Retriever__Learn_from_Large_Langu.md` | Most NLP4SE research focuses on generation or pairwise retrieval rather than structural document recovery. | MED |
+| Lack of Execution-State Context | `[2026][ArXiv][SGKR]Structure_Grounded_Knowledge_Retrieval_via_Code_De.md` | Requires complex parsing of notebook execution state and ASTs into graph structures. | HIGH |
+| Context Truncation in Long Notebooks | `[2024][arXiv (Technical Report)][C2LLM]C2LLM_Technical_Report__A_New_Frontier_in_Code_Ret.md` | Standard sequence models struggle with the extreme context lengths of full notebooks. | MED |
+
+## What conventional approaches have already tried
+For each relevant technique from the literature (minimum 3 entries):
+- **Dual-Encoder Context Fusion** (Huang et al., 2024): Achieved Kendall tau: UNKNOWN — verify before proceeding (Proxy: Exact Match 21.3%) on CoCoNote benchmark.
+  Limitation for our task: The architecture is designed for generating data-wrangling code from unstructured text and tabular data, rather than ranking the structural order of markdown cells. It lacks a listwise ranking objective to prevent transitive inconsistencies, treating the notebook as a source for generation rather than a sequence to be ordered.
+  Source: `[2024][ASE][CoCoNote]Contextualized_Data_Wrangling_Code_Generation_in_C.md`
+
+- **Metric-Augmented Sequence Modeling** (Ghahfarokhi et al., 2026): Achieved Kendall tau: UNKNOWN — verify before proceeding (Proxy: ROUGE-L 0.35) on MetricDoc-Kaggle benchmark.
+  Limitation for our task: While it integrates code metrics to understand notebook structure, it is optimized for automated documentation generation (sequence-to-sequence) rather than predicting the relative position of shuffled markdown cells. It does not model the global structural dependencies required to reconstruct a shuffled narrative.
+  Source: `[2026][arXiv][METRICDOC]Integrating_Code_Metrics_into_Automated_Documentat.md`
+
+- **Agentic Execute-Feedback-Fix Loop** (Jin et al., 2026): Achieved Kendall tau: UNKNOWN — verify before proceeding (Proxy: 74.2% Reproducibility) on Kaggle notebooks benchmark.
+  Limitation for our task: This framework treats the contemporary environment as a fixed constraint to repair legacy code and ensure execution reproducibility. It does not address the cross-modal alignment required to restore the narrative flow of shuffled markdown cells, nor does it provide a mechanism for ranking text elements.
+  Source: `[2026][arXiv.org][MLEModernizer]Automated_Modernization_of_Machine_Learning_Engine.md`
+
+- **Hierarchical Sequence Modeling** (Rahman et al., 2026): Achieved Kendall tau: UNKNOWN — verify before proceeding (Proxy: Accuracy 67.90%) on CodeXGLUE Defect Detection benchmark.
+  Limitation for our task: While it reinforces contextual embeddings with sequential RNN architectures to capture long-range dependencies, it is applied to defect detection rather than the structural ordering of markdown cells. It does not address the cross-modal alignment required for notebook cell ranking.
+  Source: `[2026][arXiv][CodeT5-RNN]CodeT5_RNN__Reinforcing_Contextual_Embeddings_for_.md`
+
+## Available baselines
+| Name | Role | Implementation | Expected Score | Source | Source File |
+|---|---|---|---|---|---|
+| CodeT5-RNN | C0 | Hybrid LLM-RNN framework using CodeT5/CodeBERT as encoder and RNN for sequence modeling. | 0.679 (ESTIMATED — formula not verified) | CodeT5-RNN | `[2026][arXiv][CodeT5-RNN]CodeT5_RNN__Reinforcing_Contextual_Embeddings_for_.md` |
+| C2LLM | C1 | Qwen2.5-Coder with Adaptive Cross-Attention Pooling (PMA) to aggregate global context. | 0.807 (ESTIMATED — formula not verified) | C2LLM Technical Report | `[2024][arXiv (Technical Report)][C2LLM]C2LLM_Technical_Report__A_New_Frontier_in_Code_Ret.md` |
+
+## Reference paper pool (use these for cross-domain transfer)
+| # | Citation (Authors, Title, Venue, Year) | Relevance to Task | Positioning vs. Our Work |
+|---|---|---|---|
+| 1 | Lu, J., Wang, H., Liu, Z., Liang, K., Bao, L., Yang, X. "Instructive Code Retriever: Learn from Large Language Model’s Feedback for Code Intelligence Tasks", International Conference on Automated Software Engineering, 2024. URL: https://arxiv.org/abs/2403.11121 | Introduces Ranking-Tree Loss for listwise ranking. | We adapt their Ranking-Tree Loss to optimize the global order of markdown cells instead of code retrieval. |
+| 2 | Huang, X., Lu, M., Dong, H. "Structure-Grounded Knowledge Retrieval via Code Dependencies for Multi-Step Data Reasoning", arXiv.org, 2026. URL: https://arxiv.org/abs/2604.10516 | Proposes DAG-based function-call dependency parsing. | We extend their DAG-based dependency parsing to model execution-aware AST dependencies between notebook cells. |
+| 3 | Qin, J., Liao, Z., Zhang, Z., Yu, H., Di, P., Wang, R. "C2LLM Technical Report: A New Frontier in Code Retrieval via Adaptive Cross-Attention Pooling", arXiv.org, 2025. URL: https://arxiv.org/abs/2512.21332 | Introduces Pooling by Multihead Attention (PMA) for global context aggregation. | We replace standard mean pooling with their PMA to aggregate global narrative context across long notebooks. |
+| 4 | Rahman, M. M., Shiplu, A. I., Watanobe, Y., Amin, M. F. I., Naqvi, S. R., Liu, F. "CodeT5-RNN: Reinforcing Contextual Embeddings for Enhanced Code Comprehension", arXiv.org, 2026. URL: https://arxiv.org/abs/2603.17821 | Proposes a hybrid LLM-RNN framework for sequence modeling. | We use their hybrid LLM-RNN framework as our C0 baseline to establish the performance floor for sequence modeling. |
+| 5 | Huang, J., Guo, D., Wang, C., Gu, J., Lu, S., Inala, J., Yan, C., Gao, J., Duan, N., Lyu, M. R. "Contextualized Data-Wrangling Code Generation in Computational Notebooks", International Conference on Automated Software Engineering, 2024. URL: https://arxiv.org/pdf/2409.13551 | Explores dual-encoder context fusion for notebooks. | Unlike their dual-encoder context fusion for generation, we formulate the task as a listwise ranking problem. |
+| 6 | Ghahfarokhi, M. M., Jahantigh, H., Asadi, A., Heydarnoori, A. "Integrating Code Metrics into Automated Documentation Generation for Computational Notebooks", arXiv.org, 2026. URL: https://arxiv.org/abs/2602.08133 | Integrates code metrics into sequence modeling for notebooks. | We replace their flat metric-augmented sequence modeling with an execution-aware GNN that captures AST dependencies. |
+| 7 | Jin, B., Wang, K., Nie, P. "Automated Modernization of Machine Learning Engineering Notebooks for Reproducibility", arXiv.org, 2026. URL: https://arxiv.org/abs/2602.07195 | Uses an agentic execute-feedback-fix loop for notebook repair. | Unlike their agentic execute-feedback-fix loop for repair, we use adaptive cross-attention pooling for cross-modal alignment. |
+| 8 | Haider, M. A., Bulbul, A., Shahid, N. F., Ahmed, A., Abedin, M. I. "LoRA-MME: Multi-Model Ensemble of LoRA-Tuned Encoders for Code Comment Classification", arXiv.org, 2026. URL: Not specified | Proposes a weighted ensemble strategy for code classification. | We adapt their weighted ensemble strategy to combine predictions from our GNN and cross-attention modules. |
+| 9 | Dong, S., Zhao, H., Harvey, P. "Code vs Serialized AST Inputs for LLM-Based Code Summarization: An Empirical Study", arXiv.org, 2026. URL: https://arxiv.org/abs/2602.06671 | Introduces Node-Index Traversal (NIT) serialization for ASTs. | We utilize their NIT serialization to convert ASTs into flat sequences for our GNN encoder. |
+| 10 | Wang, Y., Li, X., Nguyen, T. N., Wang, S., Ni, C., Ding, L. "Natural Is the Best: Model-Agnostic Code Simplification for Pre-trained Large Language Models", arXiv.org, 2024. URL: Not specified | Proposes AST and PDG based token ranking for code simplification. | We utilize their AST-based token ranking strategy to filter irrelevant code tokens before GNN processing. |
+| 11 | Pan, Z., Li, C., Zhong, W., Feng, Y., Luo, B., Ng, V. "RepoRepair: Leveraging Code Documentation for Repository-Level Automated Program Repair", arXiv.org, 2026. URL: https://arxiv.org/pdf/2603.01048.pdf | Uses dependency-aware context pruning for program repair. | We utilize their dependency-aware context pruning to reduce the token length of code cells before GNN processing. |
+| 12 | Hu, X., Niu, F., Chen, J., Zhou, X., Zhang, J., He, J., Xia, X., Lo, D. "Assessing and Advancing Benchmarks for Evaluating Large Language Models in Software Engineering Tasks", ACM Transactions on Software Engineering and Methodology, 2025. URL: https://arxiv.org/abs/2505.08903 | Provides a taxonomy of SE benchmarks and evaluation metrics. | We use their taxonomy to justify our selection of Kendall tau over Pass@k for structural ranking tasks. |
+| 13 | Amin, M. F. I., Watanobe, Y., Rahman, M. M., Muepu, D. M., Mia, M. S. "Error Understanding in Program Code With LLM-DL for Multi-label Classification", arXiv.org, 2026. URL: Not specified | Proposes a hybrid MLEC framework with GRU decoders. | We adapt their GRU decoder architecture for our C0 baseline implementation. |
+| 14 | Akli, A., Cordy, M., Papadakis, M., Traon, Y. L. "One Model, Many Skills: Parameter-Efficient Fine-Tuning for Multitask Code Analysis", arXiv.org, 2026. URL: https://arxiv.org/abs/2410.14815 | Explores PEFT for multitask code analysis. | We apply their PEFT approach to efficiently train our cross-attention pooling module within the 40GB memory constraint. |
+| 15 | Yang, J., Jimenez, C. E., Wettig, A., Lieret, K. A., Yao, S., Narasimhan, K., Press, O. "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering", Neural Information Processing Systems, 2024. URL: https://arxiv.org/abs/2405.15793 | Proposes context management strategies like collapsing history. | We adapt their context management strategy (collapsing history) to truncate irrelevant code cells during GNN processing. |
+| 16 | Zhuo, T. Y., Vu, M. C., Chim, J., Hu, H., Yu, W., Widyasari, R., Yusuf, I. N. B., Zhan, H., He, J., Paul, I. "BigCodeBench: Benchmarking Code Generation with Diverse Function Calls and Complex Instructions", International Conference on Learning Representations, 2024. URL: https://arxiv.org/abs/2406.15877 | Uses rule-based parsing of docstrings to clean code instructions. | We adapt their rule-based parsing of docstrings to clean markdown cells before feeding them into our ranking model. |
+| 17 | Wang, G., Sun, Z., Ye, S., Gong, Z., Chen, Y., Zhao, Y., Liang, Q.-L., Hao, D. "Toward Explaining Large Language Models in Software Engineering Tasks", arXiv.org, 2024. URL: https://arxiv.org/pdf/2412.20328.pdf | Introduces FeatureSHAP for interpreting LLM attention in SE tasks. | We apply their FeatureSHAP framework to interpret the attention weights of our adaptive cross-attention pooling module as a diagnostic metric. |
+| 18 | Zeng, P., Wang, Z., Duan, Z., Feng, L., Wang, S., Wang, C., Wang, J., Zhao, B., Wei, H., Zhang, L. "IndustryCode: A Benchmark for Industry Code Generation", arXiv.org, 2026. URL: Not specified | Proposes a Cumulative Context Mechanism for state tracking. | We adapt their Cumulative Context Mechanism to track the state across multiple markdown cells during ranking. |
+| 19 | Trofimova, E., Sataev, E., Ustyuzhanin, A. E. "Linguacodus: a synergistic framework for transformative code generation in machine learning pipelines", PeerJ Computer Science, 2024. URL: https://arxiv.org/abs/2403.11585 | Uses a two-step synergistic framework for code generation. | We adapt their two-step synergistic framework to first generate high-level structural instructions before ranking markdown cells. |
+| 20 | Lai, E., Vitagliano, G., Zhang, Z., Sudhir, S., Chabra, O., Zeng, A., Zabreyko, A. A., Li, C., Kossmann, F., Ding, J. "KramaBench: A Benchmark for AI Systems on Data-to-Insight Pipelines over Data Lakes", arXiv.org, 2025. URL: https://arxiv.org/abs/2506.06541 | Introduces One-Pass Sampling (OPS) for efficient code retrieval. | We use their One-Pass Sampling (OPS) method to efficiently retrieve relevant code context for markdown ranking. |
+| 21 | Bhattacharya, P., Gupta, R. "Selective Shot Learning for Code Explanation", arXiv.org, 2024. URL: https://arxiv.org/abs/2412.12852 | Uses syntax-aware entity extraction for code explanation. | We adapt their syntax-aware entity extraction to identify key programming entities in markdown cells for better alignment. |
+| 22 | Zhu, Y., Zhao, X., Li, X., Zou, Y., Yuan, H., Wang, Y., Xie, B. "RepoSummary: Feature-Oriented Summarization and Documentation Generation for Code Repositories", arXiv.org, 2025. URL: Not specified | Uses hierarchical clustering with the Leiden algorithm to group code into functional features. | We adapt their hierarchical clustering approach to group related markdown and code cells before global ranking. |
+| 23 | Dubey, A., Jauhri, A., Pandey, A., Kadian, A., Al-Dahle, A., Letman, A., Mathur, A., Schelten, A., Yang, A., Fan, A. "The Llama 3 Herd of Models", arXiv.org, 2024. URL: https://arxiv.org/pdf/2407.21783.pdf | Introduces Context Parallelism for extending context windows. | We utilize their Context Parallelism technique to handle notebooks exceeding standard token limits during cross-attention pooling. |
+| 24 | Luo, Q., Ye, Y., Liang, S., Zhang, Z., Qin, Y., Lu, Y.-T., Wu, Y., Cong, X., Lin, Y., Zhang, Y. "RepoAgent: An LLM-Powered Open-Source Framework for Repository-level Code Documentation Generation", Conference on Empirical Methods in Natural Language Processing, 2024. URL: https://arxiv.org/abs/2402.16667 | Uses AST and Jedi to build a Directed Acyclic Graph (DAG) of reference relationships. | We extend their DAG-based reference tracking to model data flow dependencies between code cells in our GNN. |
+| 25 | Xu, T., Zhu, X.-y., Lai, X., Dang, S., Lian, X., Cheng, H., Wang, J. "Do Papers Match Code? A Benchmark and Framework for Paper-Code Consistency Detection in Bioinformatics Software", arXiv.org, 2026. URL: Not specified | Uses a Weighted Focal Loss to address class imbalance in code-text alignment. | We adapt their Weighted Focal Loss to handle the imbalance of adjacent vs. non-adjacent cell pairs during listwise ranking. |
+| 26 | Nie, F., Wang, J., Hua, H., Bianchi, F., Kwon, Y., Qi, Z., Queen, O., Zhu, S., Zou, J. "DSGym: A Holistic Framework for Evaluating and Training Data Science Agents", arXiv.org, 2026. URL: Not specified | Features Shortcut Filtering to remove tasks solvable without data access. | We adapt their Shortcut Filtering to remove trivial markdown cells (e.g., empty or generic headers) before ranking. |
+
+# How-Might-We seeds (use one or more as starting points)
+- How might we vulnerability to Transitive Inconsistencies? Why unexplored: Most NLP4SE research focuses on generation or pairwise retrieval rather than structural document recovery.
+- How might we lack of Execution-State Context? Why unexplored: Requires complex parsing of notebook execution state and ASTs into graph structures.
+- How might we context Truncation in Long Notebooks? Why unexplored: Standard sequence models struggle with the extreme context lengths of full notebooks.
+
+# Previous-round feedback
+Feedback from the previous round (use it to avoid repeating mistakes and to push past the previous best):
+
+<swarm_feedback>
+Branch 0: Multitask Absolute-Relative Positioning via PEFT for Notebook Cell Ordering → score=0.72693
+Branch 1: Entity-Graph Alignment with Jedi DAGs for Markdown Ranking → score=0.70091
+Branch 2: Anti-Cyclic Adjacency Prediction via Weighted Focal Loss → score=0.74623
+Branch 3: Pointer-Network Decoding for Cycle-Free Markdown Permutation → score=0.73638
+</swarm_feedback>
+
+<previous_run_reflection>
+Anti-Cyclic Adjacency Prediction via Weighted Focal Loss (Branch 2) achieved the highest score (0.74623), proving that framing cell ordering as a pairwise adjacency task while rigorously penalizing cyclic dependencies and addressing class imbalance is superior. Pointer-Network decoding (Branch 3, 0.73638) also performed strongly by natively enforcing cycle-free permutations autoregressively. Conversely, standard multitask PEFT (Branch 0, 0.72693) and Entity-Graph Alignment (Branch 1, 0.70091) lacked the rigorous structural constraints needed for optimal markdown permutation.
+</previous_run_reflection>
+
+# Output format
+Return a JSON array (and nothing else — no prose, no code fences). Each
+element:
+
+  {"title": "...", "short_hypothesis": "...", "twist": "<what assumption you're breaking>", "grounded_in": ["paper or method from the brief"], "addresses": "<which open problem>"}
+
+Generate exactly 10 ideas. Be bold but not unhinged — every idea must remain
+empirically testable against the brief's baselines.
+
+
+IMPORTANT: Do NOT propose ideas similar to any of these already-generated titles:
+- Plackett-Luce Listwise Ranking via Ranking-Tree Loss
+- Continuous AST Injection via Node-Index Traversal
+- Adaptive Global Context Aggregation via Pooling by Multihead Attention
+- Synergistic Bipartite Alignment via Synthetic Markdown Scaffolding
+- Transitive-Safe Reordering via DAG Upper-Triangular Reachability
+- Block-Level Narrative Sequencing via Leiden Hierarchical Clustering
+- Autoregressive State Tracking with Cumulative Context Decoding
+- Skeleton Alignment via One-Pass Code Context Sampling
+- Infinite-Context Cell Ranking via Distributed Context Parallelism
+- Multi-Stage Ordering via Trivial Cell Shortcut Filtering
+- Narrative-to-Transition Mapping using Dual-Encoder Fusion
+- Anchor-Based Alignment via Syntax-Aware Entity Extraction
+- Dynamic Notebook Slicing via Dependency-Aware Context Pruning
+- Global Kendall-Tau Optimization via Weighted Focal RL
+- Iterative Sequence Refinement via FeatureSHAP Attention Reweighting
+- State-Delta Compression via Collapsed History Management
+Generate completely different ideas.

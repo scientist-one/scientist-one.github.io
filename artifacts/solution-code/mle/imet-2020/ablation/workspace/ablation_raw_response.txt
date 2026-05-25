@@ -1,0 +1,22 @@
+[
+  {
+    "name": "single_resolution_ensemble",
+    "description": "Remove the 448 resolution features and predictions, relying solely on the 336 resolution models for the final validation and test ensemble.",
+    "reasoning": "Evaluate the performance gain provided by ensembling multi-resolution features (336 and 448) compared to a single resolution baseline."
+  },
+  {
+    "name": "single_checkpoint_inference",
+    "description": "Change the default `num_models` parameter in the `predict_ensemble` function from 10 to 1.",
+    "reasoning": "Assess the impact of deep ensembling (10 checkpoints per resolution) versus using just a single trained checkpoint."
+  },
+  {
+    "name": "fixed_standard_threshold",
+    "description": "Bypass the `find_best_threshold` function and hardcode the classification threshold to 0.5 when calculating `test_preds_bin`.",
+    "reasoning": "Determine how much of the metric improvement comes from dynamically optimizing the probability threshold on the validation set versus a standard 0.5 cutoff."
+  },
+  {
+    "name": "shallow_mlp_head",
+    "description": "Remove the second hidden layer block (Linear(2048, 1024), BatchNorm1d, ReLU, Dropout) from the `MLP` class, projecting directly from 2048 to `num_classes`.",
+    "reasoning": "Test if the high capacity of a 2-hidden-layer MLP is strictly necessary for this dataset, or if a shallower 1-hidden-layer network is sufficient to map features to classes."
+  }
+]

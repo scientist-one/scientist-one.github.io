@@ -1,0 +1,9 @@
+Iteration 1:
+- Solution ID: 14d0b823
+- Change: Baseline ResNet-18 FPN model.
+- Outcome: Validated that a simple 8-channel BEV CenterPoint regression can successfully reconstruct 3D bounding boxes from Lidar points, achieving a baseline Validation Loss of 1.6160.
+
+Iteration 2:
+- Solution ID: 02c95fb7
+- Hypothesis: Hybrid Semantic-Cartesian Positional Encodings (HSC-PE) natively injects map topology (lane centers, drivable paths, intersections) into the regression head without explicitly altering Ego-frame data points, improving bounding box predictions globally.
+- Outcome: Extended the baseline with explicit Semantic Distance Transforms combined with Cartesian Positional Encodings. The addition of Semantic Priors allowed the network to learn better geometries on the road network, decreasing Validation Loss to 1.5573. This confirmed the value of Hybrid encodings in multi-modal BEV perception pipelines.

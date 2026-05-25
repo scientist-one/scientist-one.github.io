@@ -1,0 +1,6 @@
+{
+  "term_out": "Loading Dataset...\nEpoch 0 Step 0/906 Loss: 23.3413 (HM: 17.2311, REG: 6.1103)\n...\nEpoch 1 Val Loss: 1.5074\nVAL_METRIC: -1.507440200539135\nInference on Test Set...",
+  "exec_time": 1526.0,
+  "analysis": "The refined HSC-PE approach with a dynamic attention gate (soft gating mechanism) further improved the mean validation loss from 1.5573 (simple concatenation) to 1.5074. By using the concatenated (BEV features + Semantic PE + Cartesian PE) context to generate an alpha mask via a local spatial MLP, the network can smoothly interpolate between map-guided embeddings (Semantic distances) for road-constrained classes and ego-centric geometries (Cartesian embeddings) for off-road/unconstrained elements. This effectively addresses the limitations of rigidly assigning semantic anchors to the entire point cloud.",
+  "val_metric": -1.507440200539135
+}

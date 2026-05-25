@@ -1,0 +1,6 @@
+{
+  "term_out": "Loading Dataset...\nEpoch 0 Step 0/906 Loss: 28.7367 (HM: 22.1441, REG: 6.5926)\n...\nEpoch 1 Val Loss: 1.5174\nVAL_METRIC: -1.5174284397774909\nInference on Test Set...",
+  "exec_time": 2219.0,
+  "analysis": "Appended spatial gradients (Sobel dx/dy) of the semantic distance transforms to the HSC-PE inputs, expanding the model to ingest explicit map topology normals (lane directions). The validation loss (1.5174) was slightly worse than the scalar distance transform + soft gating alone (1.5074). This suggests that the network (with soft gating) can internally synthesize heading information effectively from the 2D scalar distance transforms without needing explicit local 2x vector gradients, which might just add dimensionality without extra information content. The approach in 5462d73f (scalar distances with soft attention gate) remains the most robust architecture.",
+  "val_metric": -1.51742843977749
+}

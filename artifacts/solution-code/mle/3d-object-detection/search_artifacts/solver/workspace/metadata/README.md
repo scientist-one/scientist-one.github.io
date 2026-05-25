@@ -1,0 +1,1 @@
+Splits created using GroupShuffleSplit on scene_token to prevent data leakage across frames of the same scene. Ratio 80:20, random_state=42.
