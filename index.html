@@ -352,8 +352,7 @@
                     <h2 class="title is-3">CoE Audit</h2>
                     <div class="content has-text-justified">
                         <p>
-                            CoE Audit is a post-hoc evaluation protocol for auditing AI-generated research papers through four integrity checks&mdash;Score Verification, Specification Violation, Reference Verification, and Method-Code Alignment&mdash;targeting the most damaging evidence chain failures.
-                            Unlike automated review scores that reward fluency, CoE Audit checks whether individual claims trace to supporting evidence.
+                            CoE Audit is a post-hoc audit that checks whether claims in a completed paper are supported by the underlying artifacts&mdash;code, evaluator outputs, and bibliography. It comprises four integrity checks&mdash;Score Verification, Specification Violation, Reference Verification, and Method-Code Alignment&mdash;each targeting a specific way a claim can lose its grounding.
                         </p>
                     </div>
                     <figure class="image">
@@ -374,7 +373,7 @@
                         <p>
                             We apply CoE Audit to 75 papers from five autonomous research systems across five frontier systems-research tasks.
                             Every baseline exhibits at least one systematic integrity failure: hallucinated reference rates reach 21%, score verification passes in as few as 42% of papers, and method&ndash;code alignment ranges from 20% to 80%.
-                            ScientistOne is the only system to achieve perfect or near-perfect scores on all four checks&mdash;a direct consequence of maintaining evidence chains throughout the pipeline rather than retrofitting them at paper-writing time.
+                            ScientistOne is the only system to lead on all four checks&mdash;a direct consequence of maintaining evidence chains throughout the pipeline rather than retrofitting them at paper-writing time.
                         </p>
                     </div>
                 </div>
@@ -534,7 +533,7 @@
             </div>
             <p class="has-text-centered" style="margin-top: 1rem; font-size: 0.85rem; color: #888;">
                 * Gemini-3.0-Pro; all other systems use Gemini-3.1-Pro.
-                Sakana/ARC/AIR/DS/ScientistOne scores are from independent gold evaluator re-runs;
+                Sakana/ARC/AIR/DS/ScientistOne scores are from independent canonical evaluator re-runs;
                 Human, AdaEvolve, and EvoX scores are from original publications.
             </p>
         </div>
@@ -549,7 +548,8 @@
                     <div class="content has-text-justified" style="max-width: 800px; margin: 0 auto;">
                         <p>
                             To test whether the discovery loop transfers beyond ADRS, we evaluate ScientistOne <em>unmodified</em> on six tasks spanning medical imaging, fine-grained recognition, 3D perception, and parameter-constrained language modeling.
-                            Five tasks come from MLE-Bench (Kaggle competitions in Medium and High difficulty tiers); the sixth is Parameter Golf, a live competition requiring participants to train the highest-performing language model under strict constraints.
+                            Five tasks come from MLE-Bench (Kaggle competitions in Medium and High difficulty tiers); the sixth is Parameter Golf, a live competition requiring participants to train the highest-performing language model under strict size and performance constraints.
+                            Both systems are provided with a knowledge base of official leaderboard solutions up to a cutoff date of April 27, 2026.
                         </p>
                     </div>
                 </div>
@@ -568,9 +568,9 @@
                             <th></th>
                             <th></th>
                             <th>Score</th>
-                            <th>Standing</th>
+                            <th>Highlight</th>
                             <th>Score</th>
-                            <th>Standing</th>
+                            <th>Highlight</th>
                         </tr>
                     </thead>
                     <tbody>
